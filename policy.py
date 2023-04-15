@@ -10,6 +10,7 @@ from ray.rllib.utils.typing import PolicyID
 
 from model_ippo import PolicyIPPO
 from model_cppo import PolicyCPPO
+from model_hetippo import PolicyHetIPPO
 
 from multi_action_dist import TorchHomogeneousMultiActionDistribution
 from multi_trainer import MultiPPOTrainer
@@ -114,6 +115,7 @@ def policy(
         num_envs,
         num_cpus_per_worker,
         seed,
+        render_env,
         vmas_device="cpu",
 ):
     num_envs_per_worker = num_envs
@@ -123,6 +125,8 @@ def policy(
         ModelCatalog.register_custom_model("policy_net", PolicyIPPO)
     elif args.model == 'cppo':
         ModelCatalog.register_custom_model("policy_net", PolicyCPPO)
+    elif args.model == 'hetippo':
+        ModelCatalog.register_custom_model("policy_net", PolicyHetIPPO)
     else:
         raise AssertionError
 
@@ -175,6 +179,7 @@ def policy(
             "seed": seed,
             "framework": "torch",
             "env": scenario_name,
+            "render_env": render_env,
             "kl_coeff": 0.01,
             "kl_target": 0.01,
             "lambda": 0.9,
@@ -203,7 +208,7 @@ def policy(
                 "custom_model_config": {
                     "scenario_name": scenario_name,
                     "cwd": os.getcwd(),
-                    "core_hidden_dim": 64,
+                    "core_hidden_dim": 256,
                     "head_hidden_dim": 32,
                 },
             },
@@ -227,7 +232,7 @@ def policy(
                 "env_config": {
                     "num_envs": 1,
                 },
-                "callbacks": MultiCallbacks([EvaluationCallbacks]), # MultiCallbacks([RenderingCallbacks, EvaluationCallbacks]),  # Removed RenderingCallbacks
+                "callbacks": MultiCallbacks([RenderingCallbacks, EvaluationCallbacks]),  # Removed RenderingCallbacks
             },
             "callbacks": EvaluationCallbacks,
         },
@@ -237,7 +242,9 @@ def policy(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Train policy with SAE')
     parser.add_argument('-c', '--scenario', default=None, help='VMAS scenario')
-    parser.add_argument('--model', default='ippo', help='Model: ippo/cppo')
+    parser.add_argument('--model', default='ippo', help='Model: ippo/cppo/hetippo')
+    parser.add_argument('--render', action="store_true", default=False, help='Render environment')
+
 
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
     parser.add_argument('--num_envs', default=32, type=int)
@@ -258,5 +265,6 @@ if __name__ == "__main__":
         num_envs=args.num_envs,
         num_workers=args.num_workers,
         num_cpus_per_worker=args.num_cpus_per_worker,
+        render_env=args.render,
         seed=args.seed,
     )

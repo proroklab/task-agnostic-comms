@@ -55,8 +55,8 @@ SCENARIO_CONFIG = {
     },
     "dropout": {
         "num_agents": 4,
-        "reset_after": 200,
-        "max_steps": 200,
+        "reset_after": 500,
+        "max_steps": 500,
     },
     "sparse_dropout": {
         "num_agents": 4,
@@ -65,8 +65,8 @@ SCENARIO_CONFIG = {
     },
     "balance": {
         "num_agents": 3,
-        "reset_after": 500,
-        "max_steps": 500,
+        "reset_after": 200,
+        "max_steps": 200,
     },
     "transport": {
         "num_agents": 4,
@@ -77,5 +77,10 @@ SCENARIO_CONFIG = {
             "num_agents": 2,
             "reset_after": 500,
             "max_steps": 500,
-        },
+    },
+    "wheel": {
+        "num_agents": 4,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
 }
