@@ -6,7 +6,7 @@ from torch.optim import Adam
 
 from config import Config
 from scenario_config import SCENARIO_CONFIG
-from sae.sae_new import AutoEncoder as SAE
+from sae.model import AutoEncoder as SAE
 
 def _load_data(data_file, scenario_name, time_str):
     print(f"Loading {data_file}...")

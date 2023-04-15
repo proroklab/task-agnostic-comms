@@ -11,6 +11,7 @@ from ray.rllib.utils.typing import PolicyID
 from model_ippo import PolicyIPPO
 from model_cppo import PolicyCPPO
 from model_hetippo import PolicyHetIPPO
+from model_joippo import PolicyJOIPPO
 
 from multi_action_dist import TorchHomogeneousMultiActionDistribution
 from multi_trainer import MultiPPOTrainer
@@ -109,6 +110,9 @@ def env_creator(config: Dict):
 def policy(
         scenario_name,
         model,
+        encoder,
+        encoding_dim,
+        encoder_file,
         train_batch_size,
         max_steps,
         num_workers,
@@ -121,12 +125,14 @@ def policy(
     num_envs_per_worker = num_envs
     rollout_fragment_length = 125
 
-    if args.model == 'ippo':
+    if model == 'ippo':
         ModelCatalog.register_custom_model("policy_net", PolicyIPPO)
-    elif args.model == 'cppo':
+    elif model == 'cppo':
         ModelCatalog.register_custom_model("policy_net", PolicyCPPO)
-    elif args.model == 'hetippo':
+    elif model == 'hetippo':
         ModelCatalog.register_custom_model("policy_net", PolicyHetIPPO)
+    elif model == 'joippo':
+        ModelCatalog.register_custom_model("policy_net", PolicyJOIPPO)
     else:
         raise AssertionError
 
@@ -207,6 +213,9 @@ def policy(
                 "custom_action_dist": "hom_multi_action",
                 "custom_model_config": {
                     "scenario_name": scenario_name,
+                    "encoder": encoder,
+                    "encoding_dim": encoding_dim,
+                    "encoder_file": os.path.abspath(encoder_file) if encoder_file is not None else encoder_file,
                     "cwd": os.getcwd(),
                     "core_hidden_dim": 256,
                     "head_hidden_dim": 32,
@@ -241,10 +250,18 @@ def policy(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Train policy with SAE')
-    parser.add_argument('-c', '--scenario', default=None, help='VMAS scenario')
-    parser.add_argument('--model', default='ippo', help='Model: ippo/cppo/hetippo')
-    parser.add_argument('--render', action="store_true", default=False, help='Render environment')
 
+    # Required
+    parser.add_argument('-c', '--scenario', default=None, help='VMAS scenario')
+    parser.add_argument('--model', default='ippo', help='Model: ippo/cppo/hetippo/joippo')
+
+    # Joint observations with encoder
+    parser.add_argument('--encoder', default=None, help='Encoder type: mlp/sae')
+    parser.add_argument('--encoding_dim', default=None, type=int, help='Encoding dimension')
+    parser.add_argument('--encoder_file', default=None, help='File with encoder weights')
+
+    # Optional
+    parser.add_argument('--render', action="store_true", default=False, help='Render environment')
 
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
     parser.add_argument('--num_envs', default=32, type=int)
@@ -260,6 +277,9 @@ if __name__ == "__main__":
     policy(
         scenario_name=args.scenario,
         model=args.model,
+        encoder=args.encoder,
+        encoding_dim=args.encoding_dim,
+        encoder_file=args.encoder_file,
         train_batch_size=args.train_batch_size,
         max_steps=SCENARIO_CONFIG[args.scenario]["max_steps"],
         num_envs=args.num_envs,

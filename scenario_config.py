@@ -54,7 +54,7 @@ SCENARIO_CONFIG = {
         "reset_after": 500,
     },
     "dropout": {
-        "num_agents": 4,
+        "num_agents": 8,
         "reset_after": 500,
         "max_steps": 500,
     },
