@@ -256,7 +256,7 @@ if __name__ == "__main__":
     parser.add_argument('--model', default='ippo', help='Model: ippo/cppo/hetippo/joippo')
 
     # Joint observations with encoder
-    parser.add_argument('--encoder', default=None, help='Encoder type: mlp/sae')
+    parser.add_argument('--encoder', default=None, help='Encoder type: mlp/sae. Do not use this option for None')
     parser.add_argument('--encoding_dim', default=None, type=int, help='Encoding dimension')
     parser.add_argument('--encoder_file', default=None, help='File with encoder weights')
 

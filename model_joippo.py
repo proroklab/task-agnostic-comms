@@ -7,7 +7,7 @@ observation.
 Configurations:
 - Joint observations encoded by SAE to latent_dim (pre-trained/policy losses/reconstruction losses)
 - Joint observations encoded by MLP to latent_dim (pre-trained/policy losses/reconstruction losses)
-- Joint observations not encoded (policy losses)
+- Joint observations not encoded
 """
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -33,7 +33,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         self.n_agents = SCENARIO_CONFIG[scenario_name]["num_agents"]
         self.use_beta = kwargs.get("use_beta")
 
-        encoder_type = kwargs.get("encoder")
+        self.encoder_type = kwargs.get("encoder")
         encoding_dim = kwargs.get("encoding_dim")
         encoder_file = kwargs.get("encoder_file")
 
@@ -44,33 +44,39 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         self.data_std = torch.load(f'{cwd}/scalers/std_{scenario_name}.pt', map_location=torch.device(device))
 
         # Load the set autoencoder if provided, or construct a new one if not.
-        if encoder_file is not None:
-            self.autoencoder = torch.load(
-                encoder_file,
-                map_location=torch.device(device)
-            )
-            print(
-                f"Loaded {encoder_type} with dim {self.autoencoder.encoder.input_dim} and hidden_dim {self.autoencoder.encoder.hidden_dim} from"
-                f"disk at {encoder_file}")
-            assert self.autoencoder.encoder.hidden_dim == encoding_dim
-        else:
-            if encoder_type == "sae":
-                self.autoencoder = SAE(
-                    dim=obs_size,
-                    hidden_dim=encoding_dim,
-                ).to(device)
+        if self.encoder_type is not None:
+            if encoder_file is not None:
+                self.autoencoder = torch.load(
+                    encoder_file,
+                    map_location=torch.device(device)
+                )
+                print(
+                    f"Loaded {self.encoder_type} with dim {self.autoencoder.encoder.input_dim} and hidden_dim {self.autoencoder.encoder.hidden_dim} from"
+                    f"disk at {encoder_file}")
+                assert self.autoencoder.encoder.hidden_dim == encoding_dim
             else:
-                raise NotImplementedError
-            print(f"Constructed randomly initialised {encoder_type} with dim {obs_size} and hidden_dim {encoding_dim}")
+                if self.encoder_type == "sae":
+                    self.autoencoder = SAE(
+                        dim=obs_size,
+                        hidden_dim=encoding_dim,
+                    ).to(device)
+                else:
+                    raise NotImplementedError
+                print(f"Constructed randomly initialised {self.encoder_type} with dim {obs_size} and hidden_dim {encoding_dim}")
 
-        # Freeze encoder
-        for p in self.autoencoder.parameters():
-            p.requires_grad = False
-        print(f"Froze {encoder_type} parameters")
+            # Freeze encoder
+            for p in self.autoencoder.parameters():
+                p.requires_grad = False
+            print(f"Froze {self.encoder_type} parameters")
+
+        if self.encoder_type is None:
+            input_dim = obs_size * self.n_agents + obs_size
+        else:
+            input_dim = encoding_dim + obs_size
 
         self.core_network = torch.nn.Sequential(
             torch.nn.Linear(
-                in_features=encoding_dim + obs_size,
+                in_features=input_dim,
                 out_features=self.core_hidden_dim,
             ),
             torch.nn.Tanh(),
@@ -119,13 +125,15 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         observation = torch.flatten(observation, start_dim=0, end_dim=1)  # [batches * agents, obs_size]
         batch = torch.arange(n_batches, device=observation.device).repeat_interleave(self.n_agents)
 
-        # TODO: We should reshape if we are using an MLP autoencoder
-        # observation = observation.reshape(n_batches, -1)  # [batches, agents * obs_size]
+        # TODO: We should reshape if we are using an MLP autoencoder or no encoder
+        if self.encoder_type is None or self.encoder_type == "mlp":
+            observation = observation.reshape(n_batches, -1)  # [batches, agents * obs_size]
 
         x = observation
 
-        # Encode observation
-        x = self.autoencoder.encoder(x, batch, n_batches=n_batches)
+        if self.encoder_type is not None:
+            # Encode observation
+            x = self.autoencoder.encoder(x, batch, n_batches=n_batches)
 
         logits, values = [], []
         for i in range(self.n_agents):
