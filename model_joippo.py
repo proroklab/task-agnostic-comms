@@ -85,6 +85,12 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
                 out_features=self.core_hidden_dim,
             ),
             torch.nn.Tanh(),
+            # # FIXME: Added additional layer
+            # torch.nn.Linear(
+            #     in_features=self.core_hidden_dim,
+            #     out_features=self.core_hidden_dim,
+            # ),
+            # torch.nn.Tanh(),
         )
 
         for layer in self.core_network:
@@ -100,6 +106,24 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         torch.nn.init.normal_(self.policy_head.weight, mean=0.0, std=0.01)
         torch.nn.init.normal_(self.policy_head.bias, mean=0.0, std=0.01)
 
+        # # Initialise final layer with zero mean and very small variance FIXME: Added additional layer
+        # self.policy_head = torch.nn.Sequential(
+        #     torch.nn.Linear(
+        #         in_features=self.core_hidden_dim,
+        #         out_features=self.core_hidden_dim,  # Discrete: action_space[0].n
+        #     ),
+        #     torch.nn.Tanh(),
+        #
+        # )
+        # policy_last = torch.nn.Linear(
+        #         in_features=self.core_hidden_dim,
+        #         out_features=num_outputs // self.n_agents,  # Discrete: action_space[0].n
+        # )
+        # torch.nn.init.normal_(policy_last.weight, mean=0.0, std=0.01)
+        # torch.nn.init.normal_(policy_last.bias, mean=0.0, std=0.01)
+        # self.policy_head.add_module("policy_last", policy_last)
+
+
         # Value head
         self.value_head = torch.nn.Linear(
             in_features=self.core_hidden_dim,
@@ -107,6 +131,23 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         )
         torch.nn.init.normal_(self.value_head.weight, mean=0.0, std=0.01)
         torch.nn.init.normal_(self.value_head.bias, mean=0.0, std=0.01)
+
+        # # Value head FIXME: Added additional layer
+        # self.value_head = torch.nn.Sequential(
+        #     torch.nn.Linear(
+        #         in_features=self.core_hidden_dim,
+        #         out_features=self.core_hidden_dim
+        #     ),
+        #     torch.nn.Tanh(),
+        # )
+        # value_last = torch.nn.Linear(
+        #     in_features=self.core_hidden_dim,
+        #     out_features=1
+        # )
+        # torch.nn.init.normal_(value_last.weight, mean=0.0, std=0.01)
+        # torch.nn.init.normal_(value_last.bias, mean=0.0, std=0.01)
+        # self.value_head.add_module("value_last", value_last)
+
         self.current_value = None
 
     def forward(self, inputs, state, seq_lens):
