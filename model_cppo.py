@@ -31,11 +31,11 @@ class PolicyCPPO(TorchModelV2, torch.nn.Module):
                 in_features=obs_size * self.n_agents,
                 out_features=self.core_hidden_dim,
             ),
-            torch.nn.Tanh(),
-            torch.nn.Linear(
-                in_features=self.core_hidden_dim,
-                out_features=self.core_hidden_dim,
-            ),
+            # torch.nn.Tanh(),
+            # torch.nn.Linear(
+            #     in_features=self.core_hidden_dim,
+            #     out_features=self.core_hidden_dim,
+            # ),
             torch.nn.Tanh(),
             torch.nn.Linear(
                 in_features=self.core_hidden_dim,
@@ -49,38 +49,55 @@ class PolicyCPPO(TorchModelV2, torch.nn.Module):
                 torch.nn.init.normal_(layer.weight, mean=0.0, std=1.0)
                 torch.nn.init.normal_(layer.bias, mean=0.0, std=1.0)
 
-        # Initialise final layer with zero mean and very small variance
-        self.policy_head = torch.nn.Sequential(
-            torch.nn.Linear(
-                in_features=self.core_hidden_dim,
-                out_features=self.core_hidden_dim,  # Discrete: action_space[0].n
-            ),
-            torch.nn.Tanh(),
+        # # Initialise final layer with zero mean and very small variance
+        # self.policy_head = torch.nn.Sequential(
+        #     torch.nn.Linear(
+        #         in_features=self.core_hidden_dim,
+        #         out_features=self.core_hidden_dim,  # Discrete: action_space[0].n
+        #     ),
+        #     torch.nn.Tanh(),
+        #
+        # )
+        # policy_last = torch.nn.Linear(
+        #         in_features=self.core_hidden_dim,
+        #         out_features=num_outputs,  # Discrete: action_space[0].n
+        # )
+        # torch.nn.init.normal_(policy_last.weight, mean=0.0, std=0.01)
+        # torch.nn.init.normal_(policy_last.bias, mean=0.0, std=0.01)
+        # self.policy_head.add_module("policy_last", policy_last)
 
-        )
-        policy_last = torch.nn.Linear(
+        # Initialise final layer with zero mean and very small variance
+        self.policy_head = torch.nn.Linear(
                 in_features=self.core_hidden_dim,
                 out_features=num_outputs,  # Discrete: action_space[0].n
         )
-        torch.nn.init.normal_(policy_last.weight, mean=0.0, std=0.01)
-        torch.nn.init.normal_(policy_last.bias, mean=0.0, std=0.01)
-        self.policy_head.add_module("policy_last", policy_last)
+        torch.nn.init.normal_(self.policy_head.weight, mean=0.0, std=0.01)
+        torch.nn.init.normal_(self.policy_head.bias, mean=0.0, std=0.01)
+
+        # # Value head
+        # self.value_head = torch.nn.Sequential(
+        #     torch.nn.Linear(
+        #         in_features=self.core_hidden_dim,
+        #         out_features=self.core_hidden_dim
+        #     ),
+        #     torch.nn.Tanh(),
+        # )
+        # value_last = torch.nn.Linear(
+        #     in_features=self.core_hidden_dim,
+        #     out_features=self.n_agents
+        # )
+        # torch.nn.init.normal_(value_last.weight, mean=0.0, std=0.01)
+        # torch.nn.init.normal_(value_last.bias, mean=0.0, std=0.01)
+        # self.value_head.add_module("value_last", value_last)
 
         # Value head
-        self.value_head = torch.nn.Sequential(
-            torch.nn.Linear(
-                in_features=self.core_hidden_dim,
-                out_features=self.core_hidden_dim
-            ),
-            torch.nn.Tanh(),
-        )
-        value_last = torch.nn.Linear(
+        self.value_head = torch.nn.Linear(
             in_features=self.core_hidden_dim,
             out_features=self.n_agents
         )
-        torch.nn.init.normal_(value_last.weight, mean=0.0, std=0.01)
-        torch.nn.init.normal_(value_last.bias, mean=0.0, std=0.01)
-        self.value_head.add_module("value_last", value_last)
+        torch.nn.init.normal_(self.value_head.weight, mean=0.0, std=0.01)
+        torch.nn.init.normal_(self.value_head.bias, mean=0.0, std=0.01)
+
         self.current_value = None
 
     def forward(self, inputs, state, seq_lens):
