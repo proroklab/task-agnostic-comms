@@ -87,5 +87,10 @@ SCENARIO_CONFIG = {
         "num_agents": 4,
         "reset_after": 500,
         "max_steps": 500,
-    }
+    },
+    "flocking_complex": {
+                "num_agents": 4,
+                "reset_after": 500,
+                "max_steps": 500,
+    },
 }
