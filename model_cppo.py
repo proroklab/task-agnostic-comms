@@ -26,30 +26,7 @@ class PolicyCPPO(TorchModelV2, torch.nn.Module):
 
         obs_size = observation_space.shape[0] // self.n_agents
 
-        # Policy net heads
-        self.policy_head = torch.nn.Sequential(
-            torch.nn.Linear(
-                in_features=obs_size * self.n_agents,
-                out_features=self.core_hidden_dim
-            ),
-            torch.nn.Tanh(),
-            torch.nn.Linear(
-                in_features=self.core_hidden_dim,
-                out_features=self.head_hidden_dim
-            ),
-            torch.nn.Tanh()
-        )
-        # Initialise final layer with zero mean and very small variance
-        lin_out = torch.nn.Linear(
-            in_features=self.head_hidden_dim,
-            out_features=num_outputs,  # Discrete: action_space[0].n
-        )
-        torch.nn.init.normal_(lin_out.weight, mean=0.0, std=0.03)
-        torch.nn.init.normal_(lin_out.bias, mean=0.0, std=0.03)
-        self.policy_head.add_module('lin_out', lin_out)
-
-        # Value head
-        self.value_head = torch.nn.Sequential(
+        self.core_network = torch.nn.Sequential(
             torch.nn.Linear(
                 in_features=obs_size * self.n_agents,
                 out_features=self.core_hidden_dim,
@@ -57,11 +34,53 @@ class PolicyCPPO(TorchModelV2, torch.nn.Module):
             torch.nn.Tanh(),
             torch.nn.Linear(
                 in_features=self.core_hidden_dim,
-                out_features=self.head_hidden_dim
+                out_features=self.core_hidden_dim,
             ),
             torch.nn.Tanh(),
-            torch.nn.Linear(in_features=self.head_hidden_dim, out_features=self.n_agents)
+            torch.nn.Linear(
+                in_features=self.core_hidden_dim,
+                out_features=self.core_hidden_dim,
+            ),
+            torch.nn.Tanh(),
         )
+
+        for layer in self.core_network:
+            if isinstance(layer, torch.nn.Linear):
+                torch.nn.init.normal_(layer.weight, mean=0.0, std=1.0)
+                torch.nn.init.normal_(layer.bias, mean=0.0, std=1.0)
+
+        # Initialise final layer with zero mean and very small variance
+        self.policy_head = torch.nn.Sequential(
+            torch.nn.Linear(
+                in_features=self.core_hidden_dim,
+                out_features=self.core_hidden_dim,  # Discrete: action_space[0].n
+            ),
+            torch.nn.Tanh(),
+
+        )
+        policy_last = torch.nn.Linear(
+                in_features=self.core_hidden_dim,
+                out_features=num_outputs,  # Discrete: action_space[0].n
+        )
+        torch.nn.init.normal_(policy_last.weight, mean=0.0, std=0.01)
+        torch.nn.init.normal_(policy_last.bias, mean=0.0, std=0.01)
+        self.policy_head.add_module("policy_last", policy_last)
+
+        # Value head
+        self.value_head = torch.nn.Sequential(
+            torch.nn.Linear(
+                in_features=self.core_hidden_dim,
+                out_features=self.core_hidden_dim
+            ),
+            torch.nn.Tanh(),
+        )
+        value_last = torch.nn.Linear(
+            in_features=self.core_hidden_dim,
+            out_features=self.n_agents
+        )
+        torch.nn.init.normal_(value_last.weight, mean=0.0, std=0.01)
+        torch.nn.init.normal_(value_last.bias, mean=0.0, std=0.01)
+        self.value_head.add_module("value_last", value_last)
         self.current_value = None
 
     def forward(self, inputs, state, seq_lens):
@@ -74,8 +93,10 @@ class PolicyCPPO(TorchModelV2, torch.nn.Module):
         observation = observation.reshape(n_batches, -1)  # [batches, agents * obs_size]
         x = observation
 
-        self.current_value = self.value_head(x.clone())
-        logits = self.policy_head(x.clone())
+        p = self.core_network(x.clone())
+        values = self.value_head(p.clone()).squeeze(1)
+        logits = self.policy_head(p.clone())
+        self.current_value = values
 
         return logits, state
 
