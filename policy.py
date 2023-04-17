@@ -26,6 +26,9 @@ from vmas import make_env, Wrapper
 
 from config import Config
 
+import time
+import torch
+
 
 class EvaluationCallbacks(DefaultCallbacks):
     def on_episode_step(
@@ -92,6 +95,27 @@ class RenderingCallbacks(DefaultCallbacks):
         self.frames = []
 
 
+class SAECheckpointCallbacks(DefaultCallbacks):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def on_episode_end(
+            self,
+            *,
+            worker: RolloutWorker,
+            base_env: BaseEnv,
+            policies: Dict[PolicyID, Policy],
+            episode: Episode,
+            **kwargs,
+    ) -> None:
+        if worker.worker_index == 1:
+            time_str = time.strftime("%Y%m%d-%H%M%S")
+            sae = policies["default_policy"].model.autoencoder
+            file_str = f"weights/sae_policy_wk{worker.worker_index}_{time_str}.pt"
+            torch.save(sae, file_str)
+            print(f"Saved SAE trained with policy losses to {file_str}")
+
+
 # VMAS environment creator
 def env_creator(config: Dict):
     env = make_env(
@@ -114,6 +138,7 @@ def policy(
         encoding_dim,
         encoder_file,
         train_batch_size,
+        sgd_minibatch_size,
         max_steps,
         num_workers,
         num_envs,
@@ -135,7 +160,6 @@ def policy(
         ModelCatalog.register_custom_model("policy_net", PolicyJOIPPO)
     else:
         raise AssertionError
-
 
     ModelCatalog.register_custom_action_dist(
         "hom_multi_action", TorchHomogeneousMultiActionDistribution
@@ -196,7 +220,7 @@ def policy(
             "train_batch_size": train_batch_size,
             # Should remain close to max steps to avoid bias
             "rollout_fragment_length": rollout_fragment_length,
-            "sgd_minibatch_size": 4096,
+            "sgd_minibatch_size": sgd_minibatch_size,
             "num_sgd_iter": 45,
             "num_gpus": num_gpus,
             "num_workers": num_workers,
@@ -232,7 +256,7 @@ def policy(
                     "n_agents": SCENARIO_CONFIG[scenario_name]["num_agents"],
                 },
             },
-            "evaluation_interval": 5,
+            "evaluation_interval": 1,
             "evaluation_duration": 1,
             "evaluation_num_workers": 1,
             "evaluation_parallel_to_training": True,  # Will this do the trick?
@@ -241,7 +265,8 @@ def policy(
                 "env_config": {
                     "num_envs": 1,
                 },
-                "callbacks": MultiCallbacks([RenderingCallbacks, EvaluationCallbacks]),  # Removed RenderingCallbacks
+                "callbacks": MultiCallbacks([SAECheckpointCallbacks, RenderingCallbacks, EvaluationCallbacks]),
+                # Removed RenderingCallbacks
             },
             "callbacks": EvaluationCallbacks,
         },
@@ -264,6 +289,7 @@ if __name__ == "__main__":
     parser.add_argument('--render', action="store_true", default=False, help='Render environment')
 
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
+    parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='train batch size')
     parser.add_argument('--num_envs', default=32, type=int)
     parser.add_argument('--num_workers', default=5, type=int)
     parser.add_argument('--num_cpus_per_worker', default=1, type=int)
@@ -281,6 +307,7 @@ if __name__ == "__main__":
         encoding_dim=args.encoding_dim,
         encoder_file=args.encoder_file,
         train_batch_size=args.train_batch_size,
+        sgd_minibatch_size=args.sgd_minibatch_size,
         max_steps=SCENARIO_CONFIG[args.scenario]["max_steps"],
         num_envs=args.num_envs,
         num_workers=args.num_workers,
