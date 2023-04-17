@@ -137,6 +137,7 @@ def policy(
         encoder,
         encoding_dim,
         encoder_file,
+        use_proj,
         train_batch_size,
         sgd_minibatch_size,
         max_steps,
@@ -240,6 +241,7 @@ def policy(
                     "encoder": encoder,
                     "encoding_dim": encoding_dim,
                     "encoder_file": os.path.abspath(encoder_file) if encoder_file is not None else encoder_file,
+                    "use_proj": use_proj,
                     "cwd": os.getcwd(),
                     "core_hidden_dim": 256,
                     "head_hidden_dim": 32,
@@ -256,7 +258,7 @@ def policy(
                     "n_agents": SCENARIO_CONFIG[scenario_name]["num_agents"],
                 },
             },
-            "evaluation_interval": 1,
+            "evaluation_interval": 10,
             "evaluation_duration": 1,
             "evaluation_num_workers": 1,
             "evaluation_parallel_to_training": True,  # Will this do the trick?
@@ -265,8 +267,7 @@ def policy(
                 "env_config": {
                     "num_envs": 1,
                 },
-                "callbacks": MultiCallbacks([SAECheckpointCallbacks, RenderingCallbacks, EvaluationCallbacks]),
-                # Removed RenderingCallbacks
+                "callbacks": MultiCallbacks([RenderingCallbacks, EvaluationCallbacks]),  # Removed RenderingCallbacks
             },
             "callbacks": EvaluationCallbacks,
         },
@@ -285,11 +286,14 @@ if __name__ == "__main__":
     parser.add_argument('--encoding_dim', default=None, type=int, help='Encoding dimension')
     parser.add_argument('--encoder_file', default=None, help='File with encoder weights')
 
+    # Projection
+    parser.add_argument('--use_proj', action="store_true", default=False, help='Project observations into higher space')
+
     # Optional
     parser.add_argument('--render', action="store_true", default=False, help='Render environment')
-
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
-    parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='train batch size')
+    parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='sgd minibatch size')
+
     parser.add_argument('--num_envs', default=32, type=int)
     parser.add_argument('--num_workers', default=5, type=int)
     parser.add_argument('--num_cpus_per_worker', default=1, type=int)
@@ -306,6 +310,7 @@ if __name__ == "__main__":
         encoder=args.encoder,
         encoding_dim=args.encoding_dim,
         encoder_file=args.encoder_file,
+        use_proj=args.use_proj,
         train_batch_size=args.train_batch_size,
         sgd_minibatch_size=args.sgd_minibatch_size,
         max_steps=SCENARIO_CONFIG[args.scenario]["max_steps"],
