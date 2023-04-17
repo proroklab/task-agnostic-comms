@@ -32,12 +32,16 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         self.head_hidden_dim = kwargs.get("head_hidden_dim")
         self.n_agents = SCENARIO_CONFIG[scenario_name]["num_agents"]
         self.use_beta = kwargs.get("use_beta")
+        self.use_proj = kwargs.get("use_proj")
 
         self.encoder_type = kwargs.get("encoder")
         encoding_dim = kwargs.get("encoding_dim")
         encoder_file = kwargs.get("encoder_file")
 
         obs_size = observation_space.shape[0] // self.n_agents
+
+        if self.use_proj is True:
+            self.proj = torch.load(f'{cwd}/scalers/proj_{scenario_name}.pt', map_location=torch.device(device))
 
         # Load data scaling variables
         self.data_mean = torch.load(f'{cwd}/scalers/mean_{scenario_name}.pt', map_location=torch.device(device))
@@ -57,7 +61,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
             else:
                 if self.encoder_type == "sae":
                     self.autoencoder = SAE(
-                        dim=obs_size,
+                        dim=self.proj.shape[-1] if self.use_proj else obs_size,
                         hidden_dim=encoding_dim,
                     ).to(device)
                 else:
@@ -70,7 +74,10 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
             print(f"Froze {self.encoder_type} parameters")
 
         if self.encoder_type is None:
-            input_dim = obs_size * self.n_agents + obs_size
+            if self.use_proj is False:
+                input_dim = obs_size * self.n_agents + obs_size
+            else:
+                input_dim = self.proj.shape[1] * self.n_agents + obs_size
         else:
             input_dim = encoding_dim + obs_size
 
@@ -158,15 +165,26 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         agent_features = observation.clone()
 
         # Rescale observations
-        observation = (observation - self.data_mean) / self.data_std
-        observation = torch.nan_to_num(
-            observation, nan=0.0, posinf=0.0, neginf=0.0
-        )  # Replace NaNs introduced by zero-division with zero
+        if self.use_proj is False:
+            observation = (observation - self.data_mean) / self.data_std
+            observation = torch.nan_to_num(
+                observation, nan=0.0, posinf=0.0, neginf=0.0
+            )  # Replace NaNs introduced by zero-division with zero
+
+        if self.use_proj:
+            observation = observation @ self.proj  # [batches * agents, proj_size]
+            # Rescale observations
+            observation = (observation - self.data_mean) / self.data_std
+            observation = torch.nan_to_num(
+                observation, nan=0.0, posinf=0.0, neginf=0.0
+            )  # Replace NaNs introduced by zero-division with zero
+            # TODO: Should agent features also be projected? Would it be shady to not do that?
+            # TODO: Is the real solution to have two encoders? One SAE and one single-observation encoder?
+            # agent_features = agent_features @ self.proj
 
         observation = torch.flatten(observation, start_dim=0, end_dim=1)  # [batches * agents, obs_size]
         batch = torch.arange(n_batches, device=observation.device).repeat_interleave(self.n_agents)
 
-        # TODO: We should reshape if we are using an MLP autoencoder or no encoder
         if self.encoder_type is None or self.encoder_type == "mlp":
             observation = observation.reshape(n_batches, -1)  # [batches, agents * obs_size]
 
