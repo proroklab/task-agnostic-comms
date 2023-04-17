@@ -8,7 +8,8 @@ from config import Config
 from scenario_config import SCENARIO_CONFIG
 from sae.model import AutoEncoder as SAE
 
-def _load_data(data_file, scenario_name, time_str):
+
+def _load_data(data_file, scenario_name, time_str, use_proj):
     print(f"Loading {data_file}...")
 
     # Load file containing all the observations to encode. We expect that
@@ -22,6 +23,13 @@ def _load_data(data_file, scenario_name, time_str):
     # Shuffle the data (but only in the first dimension)
     data = data[torch.randperm(data.size()[0])]
 
+    # Generate random matrix with which we project data to higher dimension
+    if use_proj is True:
+        data = data[:data.size()[0] // 2]
+        proj = torch.rand((data.shape[-1], 1024))
+        torch.save(proj, f'scalers/proj_{scenario_name}_{time_str}.pt')
+        data = (data.to('cpu') @ proj).to('cpu')
+
     # Cache mean and standard deviation for rescaling later
     mean = data.mean(0)
     std = data.std(0)
@@ -33,6 +41,7 @@ def _load_data(data_file, scenario_name, time_str):
 
     # Replace any NaNs introduced by zero-division
     data = torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+
     # data[data != data] = 0
 
     print("Loaded data with shape", data.shape)
@@ -47,9 +56,11 @@ def _train_test_split(data, train_proportion, test_lim):
 
     return data[:n_train_samples], data[n_train_samples: n_train_samples + n_test_samples]
 
+
 def train(
         scenario_name,
         data_file,
+        use_proj,
         latent_dim,
         batches_per_epoch=256,
         test_lim=1024
@@ -58,7 +69,7 @@ def train(
     set_size = SCENARIO_CONFIG[scenario_name]["num_agents"]
 
     # Load and process data
-    data = _load_data(data_file, scenario_name, time_str)
+    data = _load_data(data_file, scenario_name, time_str, use_proj)
     train_data, test_data = _train_test_split(data, train_proportion=0.8, test_lim=test_lim)
 
     # Flatten first two dimensions to put samples and agents together to get [samples, obs_dim]
@@ -108,7 +119,7 @@ def train(
             xr, _ = sae(test_data, batch=batch_test)
             test_loss_vars = sae.loss()
 
-            if epoch % 5000 == 0:
+            if epoch % 1000 == 0:
                 print("\t Epoch", epoch)
                 print("----- TRAIN -----")
                 print(train_loss_vars)
@@ -160,6 +171,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Train SAE on sampled data')
     parser.add_argument('--latent', default=16, type=int, help='latent dimension of set autoencoder to use')
     parser.add_argument('--data', help='file to load for training data (sampled observations)')
+    parser.add_argument('--use_proj', help='project observations into high-dimensional space')
     parser.add_argument('-c', '--scenario', default=None, help='VMAS scenario')
     parser.add_argument('-d', '--device', default='cuda')
     args = parser.parse_args()
@@ -170,6 +182,6 @@ if __name__ == "__main__":
     train(
         args.scenario,
         args.data,
+        args.use_proj,
         args.latent,
     )
-
