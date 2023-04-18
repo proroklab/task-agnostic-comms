@@ -103,4 +103,19 @@ SCENARIO_CONFIG = {
         "reset_after": 500,
         "max_steps": 500,
     },
+    "flocking_transfer": {
+        "num_agents": 4,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "discovery_transfer": {
+        "num_agents": 4,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "passage": {
+        "num_agents": 5,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
 }
