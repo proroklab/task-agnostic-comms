@@ -37,6 +37,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         self.encoder_type = kwargs.get("encoder")
         encoding_dim = kwargs.get("encoding_dim")
         encoder_file = kwargs.get("encoder_file")
+        self.encoder_loss = kwargs.get("encoder_loss")
 
         obs_size = observation_space.shape[0] // self.n_agents
 
@@ -69,9 +70,12 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
                 print(f"Constructed randomly initialised {self.encoder_type} with dim {obs_size} and hidden_dim {encoding_dim}")
 
             # Freeze encoder
-            for p in self.autoencoder.parameters():
-                p.requires_grad = False
-            print(f"Froze {self.encoder_type} parameters")
+            if self.encoder_loss is None:
+                for p in self.autoencoder.parameters():
+                    p.requires_grad = False
+                print(f"Froze {self.encoder_type} parameters")
+            else:
+                print(f"Did not freeze {self.encoder_type}. Training with loss {self.encoder_loss}.")
 
         if self.encoder_type is None:
             if self.use_proj is False:

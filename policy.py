@@ -116,6 +116,44 @@ class SAECheckpointCallbacks(DefaultCallbacks):
             print(f"Saved SAE trained with policy losses to {file_str}")
 
 
+class ReconstructionLossCallbacks(DefaultCallbacks):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def on_episode_end(
+            self,
+            *,
+            worker: RolloutWorker,
+            base_env: BaseEnv,
+            policies: Dict[PolicyID, Policy],
+            episode: Episode,
+            **kwargs,
+    ) -> None:
+
+        # Pseudo-reconstruction loss (as we sample from observation space)
+        pi = policies["default_policy"]
+        obs = pi.observation_space.sample()  # FIXME: Observation space may not be correctly defined!
+        obs = obs.reshape(pi.model.n_agents, -1)
+        obs = torch.tensor(obs)
+
+        if pi.model.use_proj is True:
+            obs = obs @ pi.model.proj
+
+        obs = (obs - pi.model.data_mean) / pi.model.data_std
+        obs = torch.nan_to_num(
+            obs, nan=0.0, posinf=0.0, neginf=0.0
+        )  # Replace NaNs introduced by zero-division with zero
+
+        sae = pi.model.autoencoder
+        sae(obs)
+        losses = sae.loss()
+        sae_loss = losses["loss"].item()
+        recon_loss = losses["mse_loss"].item()
+
+        episode.custom_metrics[f"worker{worker.worker_index}/sae_loss"] = sae_loss
+        episode.custom_metrics[f"worker{worker.worker_index}/recon_loss"] = recon_loss
+
+
 # VMAS environment creator
 def env_creator(config: Dict):
     env = make_env(
@@ -137,6 +175,7 @@ def policy(
         encoder,
         encoding_dim,
         encoder_file,
+        encoder_loss,
         use_proj,
         train_batch_size,
         sgd_minibatch_size,
@@ -165,6 +204,10 @@ def policy(
     ModelCatalog.register_custom_action_dist(
         "hom_multi_action", TorchHomogeneousMultiActionDistribution
     )
+
+    callbacks = [RenderingCallbacks, EvaluationCallbacks]
+    if encoder_loss == 'policy':
+        callbacks.insert(0, SAECheckpointCallbacks)
 
     if not ray.is_initialized():
         ray.init()
@@ -241,6 +284,7 @@ def policy(
                     "encoder": encoder,
                     "encoding_dim": encoding_dim,
                     "encoder_file": os.path.abspath(encoder_file) if encoder_file is not None else encoder_file,
+                    "encoder_loss": encoder_loss,
                     "use_proj": use_proj,
                     "cwd": os.getcwd(),
                     "core_hidden_dim": 256,
@@ -267,7 +311,7 @@ def policy(
                 "env_config": {
                     "num_envs": 1,
                 },
-                "callbacks": MultiCallbacks([RenderingCallbacks, EvaluationCallbacks]),  # Removed RenderingCallbacks
+                "callbacks": MultiCallbacks(callbacks),  # Removed RenderingCallbacks
             },
             "callbacks": EvaluationCallbacks,
         },
@@ -284,6 +328,7 @@ if __name__ == "__main__":
     # Joint observations with encoder
     parser.add_argument('--encoder', default=None, help='Encoder type: mlp/sae. Do not use this option for None')
     parser.add_argument('--encoding_dim', default=None, type=int, help='Encoding dimension')
+    parser.add_argument('--encoder_loss', default=None, help='Train encoder loss: policy/recon leave None for frozen')
     parser.add_argument('--encoder_file', default=None, help='File with encoder weights')
 
     # Projection
@@ -310,6 +355,7 @@ if __name__ == "__main__":
         encoder=args.encoder,
         encoding_dim=args.encoding_dim,
         encoder_file=args.encoder_file,
+        encoder_loss=args.encoder_loss,
         use_proj=args.use_proj,
         train_batch_size=args.train_batch_size,
         sgd_minibatch_size=args.sgd_minibatch_size,
