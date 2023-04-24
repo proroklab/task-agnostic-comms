@@ -33,6 +33,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         self.n_agents = SCENARIO_CONFIG[scenario_name]["num_agents"]
         self.use_beta = kwargs.get("use_beta")
         self.use_proj = kwargs.get("use_proj")
+        self.no_stand = kwargs.get("no_stand")
 
         self.encoder_type = kwargs.get("encoder")
         encoding_dim = kwargs.get("encoding_dim")
@@ -45,8 +46,9 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
             self.proj = torch.load(f'{cwd}/scalers/proj_{scenario_name}.pt', map_location=torch.device(device))
 
         # Load data scaling variables
-        self.data_mean = torch.load(f'{cwd}/scalers/mean_{scenario_name}.pt', map_location=torch.device(device))
-        self.data_std = torch.load(f'{cwd}/scalers/std_{scenario_name}.pt', map_location=torch.device(device))
+        if self.no_stand is False:
+            self.data_mean = torch.load(f'{cwd}/scalers/mean_{scenario_name}.pt', map_location=torch.device(device))
+            self.data_std = torch.load(f'{cwd}/scalers/std_{scenario_name}.pt', map_location=torch.device(device))
 
         # Load the set autoencoder if provided, or construct a new one if not.
         if self.encoder_type is not None:
@@ -163,31 +165,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
 
     def forward(self, inputs, state, seq_lens):
 
-        observation = inputs["obs_flat"]  # [batches, agents * obs_size]
-        n_batches = observation.shape[0]
-        observation = observation.reshape(n_batches, self.n_agents, -1)  # [batches, agents, obs_size]
-        agent_features = observation.clone()
-
-        # Rescale observations
-        if self.use_proj is False:
-            observation = (observation - self.data_mean) / self.data_std
-            observation = torch.nan_to_num(
-                observation, nan=0.0, posinf=0.0, neginf=0.0
-            )  # Replace NaNs introduced by zero-division with zero
-
-        if self.use_proj:
-            observation = observation @ self.proj  # [batches * agents, proj_size]
-            # Rescale observations
-            observation = (observation - self.data_mean) / self.data_std
-            observation = torch.nan_to_num(
-                observation, nan=0.0, posinf=0.0, neginf=0.0
-            )  # Replace NaNs introduced by zero-division with zero
-            # TODO: Should agent features also be projected? Would it be shady to not do that?
-            # TODO: Is the real solution to have two encoders? One SAE and one single-observation encoder?
-            # agent_features = agent_features @ self.proj
-
-        observation = torch.flatten(observation, start_dim=0, end_dim=1)  # [batches * agents, obs_size]
-        batch = torch.arange(n_batches, device=observation.device).repeat_interleave(self.n_agents)
+        observation, batch, agent_features, n_batches = self.process_flat_obs(inputs["obs_flat"])
 
         if self.encoder_type is None or self.encoder_type == "mlp":
             observation = observation.reshape(n_batches, -1)  # [batches, agents * obs_size]
@@ -222,3 +200,47 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
 
     def value_function(self):
         return self.current_value  # [batches, n_agents]
+
+    def custom_loss(self, policy_loss, loss_inputs):
+
+        if self.encoder_loss == "recon":
+            observation, batch, agent_features, n_batches = self.process_flat_obs(loss_inputs["obs"])
+            x = observation
+            if self.encoder_type is not None:
+                _ = self.autoencoder(x, batch=batch)
+            sae_loss = self.autoencoder.loss()["loss"]
+            return [policy_loss[0] + sae_loss]
+
+        else:
+            return policy_loss
+
+    def process_flat_obs(self, observation):
+
+        n_batches = observation.shape[0]
+        observation = observation.reshape(n_batches, self.n_agents, -1)  # [batches, agents, obs_size]
+        agent_features = observation.clone()
+
+        # Rescale observations
+        if self.use_proj is False:
+            if self.no_stand is False:
+                observation = (observation - self.data_mean) / self.data_std
+                observation = torch.nan_to_num(
+                    observation, nan=0.0, posinf=0.0, neginf=0.0
+                )  # Replace NaNs introduced by zero-division with zero
+
+        if self.use_proj:
+            observation = observation @ self.proj  # [batches * agents, proj_size]
+            if self.no_stand is False:
+                # Rescale observations
+                observation = (observation - self.data_mean) / self.data_std
+                observation = torch.nan_to_num(
+                    observation, nan=0.0, posinf=0.0, neginf=0.0
+                )  # Replace NaNs introduced by zero-division with zero
+                # TODO: Should agent features also be projected? Would it be shady to not do that?
+                # TODO: Is the real solution to have two encoders? One SAE and one single-observation encoder?
+                # agent_features = agent_features @ self.proj
+
+        observation = torch.flatten(observation, start_dim=0, end_dim=1)  # [batches * agents, obs_size]
+        batch = torch.arange(n_batches, device=observation.device).repeat_interleave(self.n_agents)
+
+        return observation, batch, agent_features, n_batches

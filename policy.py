@@ -1,12 +1,12 @@
 import argparse
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.typing import PolicyID
+from ray.rllib.utils.typing import PolicyID, AgentID
 
 from model_ippo import PolicyIPPO
 from model_cppo import PolicyCPPO
@@ -18,7 +18,7 @@ from multi_trainer import MultiPPOTrainer
 
 from scenario_config import SCENARIO_CONFIG
 import wandb
-from ray.rllib import BaseEnv, RolloutWorker, Policy
+from ray.rllib import BaseEnv, RolloutWorker, Policy, SampleBatch
 from ray.rllib.evaluation import Episode, MultiAgentEpisode
 from ray.tune import register_env
 from ray.tune.integration.wandb import WandbLoggerCallback
@@ -120,38 +120,50 @@ class ReconstructionLossCallbacks(DefaultCallbacks):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def on_episode_end(
-            self,
-            *,
-            worker: RolloutWorker,
-            base_env: BaseEnv,
-            policies: Dict[PolicyID, Policy],
-            episode: Episode,
-            **kwargs,
+    def on_postprocess_trajectory(
+        self,
+        *,
+        worker: "RolloutWorker",
+        episode: Episode,
+        agent_id: AgentID,
+        policy_id: PolicyID,
+        policies: Dict[PolicyID, Policy],
+        postprocessed_batch: SampleBatch,
+        original_batches: Dict[AgentID, Tuple[Policy, SampleBatch]],
+        **kwargs,
     ) -> None:
-
-        # Pseudo-reconstruction loss (as we sample from observation space)
         pi = policies["default_policy"]
-        obs = pi.observation_space.sample()  # FIXME: Observation space may not be correctly defined!
-        obs = obs.reshape(pi.model.n_agents, -1)
-        obs = torch.tensor(obs)
+        obs = torch.tensor(postprocessed_batch["obs"]).clone()
+        n_batches = obs.shape[0]
+
+        obs = obs.reshape(n_batches, pi.model.n_agents, -1)
 
         if pi.model.use_proj is True:
             obs = obs @ pi.model.proj
 
-        obs = (obs - pi.model.data_mean) / pi.model.data_std
-        obs = torch.nan_to_num(
-            obs, nan=0.0, posinf=0.0, neginf=0.0
-        )  # Replace NaNs introduced by zero-division with zero
+        if pi.model.no_stand is False:
+            obs = (obs - pi.model.data_mean) / pi.model.data_std
+            obs = torch.nan_to_num(
+                obs, nan=0.0, posinf=0.0, neginf=0.0
+            )  # Replace NaNs introduced by zero-division with zero
+
+        obs = torch.flatten(obs, start_dim=0, end_dim=1)  # [batches * agents, obs_size]
+        batch = torch.arange(n_batches, device=obs.device).repeat_interleave(pi.model.n_agents)
 
         sae = pi.model.autoencoder
-        sae(obs)
+        sae(obs, batch=batch)
         losses = sae.loss()
-        sae_loss = losses["loss"].item()
-        recon_loss = losses["mse_loss"].item()
+        sae_loss = losses["loss"]
+        recon_loss = losses["mse_loss"]
 
-        episode.custom_metrics[f"worker{worker.worker_index}/sae_loss"] = sae_loss
-        episode.custom_metrics[f"worker{worker.worker_index}/recon_loss"] = recon_loss
+        if torch.is_tensor(sae_loss):
+            sae_loss = sae_loss.item()
+        if torch.is_tensor(recon_loss):
+            recon_loss = recon_loss.item()
+
+        # Add if not worker or create if it is. Tracks running means.
+        episode.custom_metrics[f"sae_loss"] = sae_loss
+        episode.custom_metrics[f"recon_loss"] = recon_loss
 
 
 # VMAS environment creator
@@ -177,14 +189,17 @@ def policy(
         encoder_file,
         encoder_loss,
         use_proj,
+        no_stand,
         train_batch_size,
         sgd_minibatch_size,
         max_steps,
+        training_iterations,
         num_workers,
         num_envs,
         num_cpus_per_worker,
         seed,
         render_env,
+        wandb_name,
         vmas_device="cpu",
 ):
     num_envs_per_worker = num_envs
@@ -206,6 +221,8 @@ def policy(
     )
 
     callbacks = [RenderingCallbacks, EvaluationCallbacks]
+    if model == "joippo" and encoder is not None:
+        callbacks.insert(0, ReconstructionLossCallbacks)
     if encoder_loss == 'policy':
         callbacks.insert(0, SAECheckpointCallbacks)
 
@@ -236,7 +253,7 @@ def policy(
     # Train policy!
     ray.tune.run(
         MultiPPOTrainer,
-        stop={"training_iteration": 5000},
+        stop={"training_iteration": training_iterations},
         checkpoint_freq=1,
         keep_checkpoints_num=2,
         checkpoint_at_end=True,
@@ -244,7 +261,7 @@ def policy(
         callbacks=[
             WandbLoggerCallback(
                 project=f"acs_project",
-                name="rllib_training",
+                name=f"{wandb_name}-seed-{seed}",
                 entity="dhjayalath",
                 api_key="",
             )
@@ -286,9 +303,11 @@ def policy(
                     "encoder_file": os.path.abspath(encoder_file) if encoder_file is not None else encoder_file,
                     "encoder_loss": encoder_loss,
                     "use_proj": use_proj,
+                    "no_stand": no_stand,
                     "cwd": os.getcwd(),
                     "core_hidden_dim": 256,
                     "head_hidden_dim": 32,
+                    "wandb_grouping": wandb_name,
                 },
             },
             "env_config": {
@@ -297,12 +316,13 @@ def policy(
                 "scenario_name": scenario_name,
                 "continuous_actions": True,
                 "max_steps": max_steps,
+                "share_reward": True,
                 # Scenario specific variables
                 "scenario_config": {
                     "n_agents": SCENARIO_CONFIG[scenario_name]["num_agents"],
                 },
             },
-            "evaluation_interval": 10,
+            "evaluation_interval": 10,  # TODO: Change to 10
             "evaluation_duration": 1,
             "evaluation_num_workers": 1,
             "evaluation_parallel_to_training": True,  # Will this do the trick?
@@ -331,18 +351,22 @@ if __name__ == "__main__":
     parser.add_argument('--encoder_loss', default=None, help='Train encoder loss: policy/recon leave None for frozen')
     parser.add_argument('--encoder_file', default=None, help='File with encoder weights')
 
-    # Projection
-    parser.add_argument('--use_proj', action="store_true", default=False, help='Project observations into higher space')
+    # Misc.
+    parser.add_argument('--use_proj', action="store_true", default=False, help='project observations into higher space')
+    parser.add_argument('--no_stand', action="store_true", default=False, help='do not standardise observations')
 
     # Optional
     parser.add_argument('--render', action="store_true", default=False, help='Render environment')
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
     parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='sgd minibatch size')
+    parser.add_argument('--training_iterations', default=5000, type=int, help='number of training iterations')
+    parser.add_argument('--seed', default=0, type=int)
+    parser.add_argument('--wandb_name', default="rllib_training", help='wandb run name')
+
 
     parser.add_argument('--num_envs', default=32, type=int)
     parser.add_argument('--num_workers', default=5, type=int)
     parser.add_argument('--num_cpus_per_worker', default=1, type=int)
-    parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('-d', '--device', default='cuda')
     args = parser.parse_args()
 
@@ -357,12 +381,15 @@ if __name__ == "__main__":
         encoder_file=args.encoder_file,
         encoder_loss=args.encoder_loss,
         use_proj=args.use_proj,
+        no_stand=args.no_stand,
         train_batch_size=args.train_batch_size,
         sgd_minibatch_size=args.sgd_minibatch_size,
         max_steps=SCENARIO_CONFIG[args.scenario]["max_steps"],
+        training_iterations=args.training_iterations,
         num_envs=args.num_envs,
         num_workers=args.num_workers,
         num_cpus_per_worker=args.num_cpus_per_worker,
         render_env=args.render,
+        wandb_name=args.wandb_name,
         seed=args.seed,
     )

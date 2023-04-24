@@ -118,4 +118,34 @@ SCENARIO_CONFIG = {
         "reset_after": 500,
         "max_steps": 500,
     },
+    "dispersion": {
+        "num_agents": 8,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "flocking_proj": {
+        "num_agents": 4,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "discovery_proj": {
+        "num_agents": 4,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "navigation": {
+        "num_agents": 4,
+        "reset_after": 300,
+        "max_steps": 300,
+    },
+    "sparsenav": {
+        "num_agents": 4,
+        "reset_after": 300,
+        "max_steps": 300,
+    },
+    "sparseflocking": {
+        "num_agents": 4,
+        "reset_after": 300,
+        "max_steps": 300,
+    },
 }

@@ -57,7 +57,7 @@ def sample(
 
     obs_size = env.observation_space[0].shape[0]
     num_actions = env.action_space[0].n - 1
-    num_envs = 1 if random_obs else num_envs,
+    num_envs = 1 if random_obs else num_envs
 
     agent_observations = torch.empty((
         steps,

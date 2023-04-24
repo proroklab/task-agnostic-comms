@@ -5,11 +5,12 @@ import torch
 from torch.optim import Adam
 
 from config import Config
+from sae.mlpae import MLPAE
 from scenario_config import SCENARIO_CONFIG
 from sae.model import AutoEncoder as SAE
 
 
-def _load_data(data_file, scenario_name, time_str, use_proj):
+def _load_data(data_file, scenario_name, time_str, use_proj, no_stand):
     print(f"Loading {data_file}...")
 
     # Load file containing all the observations to encode. We expect that
@@ -25,22 +26,23 @@ def _load_data(data_file, scenario_name, time_str, use_proj):
 
     # Generate random matrix with which we project data to higher dimension
     if use_proj is True:
-        data = data[:data.size()[0] // 2]
-        proj = torch.rand((data.shape[-1], 1024))
+        data = data[:data.size()[0] // 4]
+        proj = torch.rand((data.shape[-1], 1024))  # Use Atari size. 1024
         torch.save(proj, f'scalers/proj_{scenario_name}_{time_str}.pt')
         data = (data.to('cpu') @ proj).to('cpu')
 
     # Cache mean and standard deviation for rescaling later
-    mean = data.mean(0)
-    std = data.std(0)
-    torch.save(mean, f'scalers/mean_{scenario_name}_{time_str}.pt')
-    torch.save(std, f'scalers/std_{scenario_name}_{time_str}.pt')
+    if no_stand is False:
+        mean = data.mean(0)
+        std = data.std(0)
+        torch.save(mean, f'scalers/mean_{scenario_name}_{time_str}.pt')
+        torch.save(std, f'scalers/std_{scenario_name}_{time_str}.pt')
 
-    # Normalise observations to zero mean and unit variance in feature channels
-    data = (data - mean) / std
+        # Normalise observations to zero mean and unit variance in feature channels
+        data = (data - mean) / std
 
-    # Replace any NaNs introduced by zero-division
-    data = torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+        # Replace any NaNs introduced by zero-division
+        data = torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
 
     # data[data != data] = 0
 
@@ -60,7 +62,9 @@ def _train_test_split(data, train_proportion, test_lim):
 def train(
         scenario_name,
         data_file,
+        model_type,
         use_proj,
+        no_stand,
         latent_dim,
         batches_per_epoch=256,
         test_lim=1024
@@ -69,7 +73,7 @@ def train(
     set_size = SCENARIO_CONFIG[scenario_name]["num_agents"]
 
     # Load and process data
-    data = _load_data(data_file, scenario_name, time_str, use_proj)
+    data = _load_data(data_file, scenario_name, time_str, use_proj, no_stand)
     train_data, test_data = _train_test_split(data, train_proportion=0.8, test_lim=test_lim)
 
     # Flatten first two dimensions to put samples and agents together to get [samples, obs_dim]
@@ -82,8 +86,11 @@ def train(
 
     # Construct the autoencoder
     model_dim = data.shape[-1]
-    sae = SAE(dim=model_dim, hidden_dim=latent_dim).to(Config.device)
-    optimizer = Adam(sae.parameters())
+    if model_type == "sae":
+        autoencoder = SAE(dim=model_dim, hidden_dim=latent_dim).to(Config.device)
+    else:
+        autoencoder = MLPAE(dim=model_dim, hidden_dim=latent_dim, n_agents=set_size).to(Config.device)
+    optimizer = Adam(autoencoder.parameters())
 
     epochs = len(train_data) // batches_per_epoch
 
@@ -107,45 +114,67 @@ def train(
         optimizer.zero_grad()
 
         x = train_data[epoch * batches_per_epoch: (epoch + 1) * batches_per_epoch]
-        xr, _ = sae(x, batch=batch_train)
-        train_loss_vars = sae.loss()
-        sae_loss = train_loss_vars["loss"]
-        sae_loss.backward()
+        xr, _ = autoencoder(x, batch=batch_train)
+
+        if model_type == "sae":
+            train_loss_vars = autoencoder.loss()
+            sae_loss = train_loss_vars["loss"]
+            sae_loss.backward()
+        else:
+            mse_loss = torch.nn.functional.mse_loss(x, xr)
 
         optimizer.step()
 
         with torch.no_grad():
 
-            xr, _ = sae(test_data, batch=batch_test)
-            test_loss_vars = sae.loss()
+            xr, _ = autoencoder(test_data, batch=batch_test)
+
+            if model_type == "sae":
+                test_loss_vars = autoencoder.loss()
+            else:
+                test_mse_loss = torch.nn.functional.mse_loss(test_data, xr)
 
             if epoch % 1000 == 0:
-                print("\t Epoch", epoch)
-                print("----- TRAIN -----")
-                print(train_loss_vars)
-                print("----- TEST -----")
-                print(test_loss_vars)
 
-                if len(xr) >= set_size:
-                    inputs_sorted = sae.encoder.get_x()
-                    print("Length (source, recon)", inputs_sorted[0:set_size].shape, xr[0:set_size].shape)
-                    print("Source", inputs_sorted[0:set_size])
+                print("\t Epoch", epoch)
+                if model_type == "sae":
+                    print("----- TRAIN -----")
+                    print(train_loss_vars)
+                    print("----- TEST -----")
+                    print(test_loss_vars)
+                else:
+                    print("----- TRAIN -----")
+                    print(mse_loss)
+                    print("----- TEST -----")
+                    print(test_mse_loss)
+
+                if model_type == "sae":
+                    if len(xr) >= set_size:
+                        inputs_sorted = autoencoder.encoder.get_x()
+                        print("Length (source, recon)", inputs_sorted[0:set_size].shape, xr[0:set_size].shape)
+                        print("Source", inputs_sorted[0:set_size])
+                        print("Recon", xr[0:set_size])
+                else:
+                    print("Source", test_data[0:set_size])
                     print("Recon", xr[0:set_size])
 
                 if epoch % 2000 == 0 and epoch != 0:
                     time_str = time.strftime("%Y%m%d-%H%M%S")
-                    file_str = f"weights/sae_{scenario_name}_{epoch}_{time_str}.pt"
-                    torch.save(sae, file_str)
+                    file_str = f"weights/{model_type}_{scenario_name}_{epoch}_{time_str}.pt"
+                    torch.save(autoencoder, file_str)
 
             wandb.log({
-                "train_loss": train_loss_vars["loss"],
-                "mse_loss": train_loss_vars["mse_loss"],
-                "size_loss": train_loss_vars["size_loss"],
-                "corr": train_loss_vars["corr"],
-                "test_loss": test_loss_vars["loss"],
-                "test_mse_loss": test_loss_vars["mse_loss"],
-                "test_size_loss": test_loss_vars["size_loss"],
-                "test_corr": test_loss_vars["corr"],
+                          "train_loss": train_loss_vars["loss"],
+                          "mse_loss": train_loss_vars["mse_loss"],
+                          "size_loss": train_loss_vars["size_loss"],
+                          "corr": train_loss_vars["corr"],
+                          "test_loss": test_loss_vars["loss"],
+                          "test_mse_loss": test_loss_vars["mse_loss"],
+                          "test_size_loss": test_loss_vars["size_loss"],
+                          "test_corr": test_loss_vars["corr"],
+                      } if model_type == "sae" else {
+                "train_loss": mse_loss,
+                "test_loss": test_mse_loss,
             })
 
     run.finish()
@@ -154,15 +183,15 @@ def train(
     print("Showing reconstruction on random sample...")
     with torch.no_grad():
 
-        xr, _ = sae(test_data, batch=batch_test)
-        inputs_sorted = sae.encoder.get_x()
+        xr, _ = autoencoder(test_data, batch=batch_test)
+        inputs_sorted = autoencoder.encoder.get_x()
         print("Length (source, recon)", inputs_sorted[0].shape, xr[0].shape)
         print("Source", inputs_sorted[0:set_size])
         print("Recon", xr[0:set_size])
 
     # Save model
-    file_str = f"weights/sae_{scenario_name}_{time_str}.pt"
-    torch.save(sae, file_str)
+    file_str = f"weights/{model_type}_{scenario_name}_{time_str}.pt"
+    torch.save(autoencoder, file_str)
     print(f"Saved model to {file_str}")
 
 
@@ -171,7 +200,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Train SAE on sampled data')
     parser.add_argument('--latent', default=16, type=int, help='latent dimension of set autoencoder to use')
     parser.add_argument('--data', help='file to load for training data (sampled observations)')
-    parser.add_argument('--use_proj', help='project observations into high-dimensional space')
+    parser.add_argument('--ae_type', default='sae', help='select autoencoder type: sae/mlp')
+    parser.add_argument('--use_proj', action='store_true', default=False, help='project observations into high-dimensional space')
+    parser.add_argument('--no_stand', action='store_true', default=False, help='do not standardise inputs')
+
     parser.add_argument('-c', '--scenario', default=None, help='VMAS scenario')
     parser.add_argument('-d', '--device', default='cuda')
     args = parser.parse_args()
@@ -182,6 +214,8 @@ if __name__ == "__main__":
     train(
         args.scenario,
         args.data,
+        args.ae_type,
         args.use_proj,
+        args.no_stand,
         args.latent,
     )
