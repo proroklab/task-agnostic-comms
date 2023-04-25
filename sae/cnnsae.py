@@ -1,6 +1,44 @@
 from torch import nn
 from sae.model import AutoEncoder as SAE
 
+class ConvVAESAE(nn.Module):
+    def __init__(self, dim=768, hidden_dim=20):
+        super().__init__()
+        self.cnn = VAE(latent_dim=dim)
+        self.sae = SAE(dim=hidden_dim, hidden_dim=hidden_dim)
+
+    def forward(self, x, batch):
+        # x has shape (steps * envs * agents, ...)
+
+        # Encoder with ConvVAE
+        mu, logvar = self.cnn.encode(x)  # (steps * agents, 11, 11, 3)
+        z = self.cnn.reparameterize(mu, logvar)
+
+        # Encode + Decode with SAE
+        zr, _ = self.sae(z, batch=batch)  # (steps * agents, dim) ??
+
+        # Decode SAE reconstruction with ConvVAE
+        x_recon = self.cnn.decode(zr)  # (steps * agents, 88, 88, 3)
+
+        # Decode original latent with ConvVAE
+        x_cnn_recon = self.cnn.decode(z)
+
+        return x_recon, x_cnn_recon, mu, logvar
+
+    def encode(self, x, batch):
+        # Encode with Conv VAE
+        mu, logvar = self.cnn.encode(x)  # (steps * agents, 11, 11, 3)
+        z = self.cnn.reparameterize(mu, logvar)
+
+        # Encode with SAE
+        z_sae = self.sae.encoder(z, batch=batch)
+
+        return z_sae
+
+    def decode(self, z_sae):
+        z = self.sae.decoder(z_sae)
+        x = self.cnn.decode(z)
+        return x
 
 class CNNSAE(nn.Module):
     def __init__(self, dim, hidden_dim):
