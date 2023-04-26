@@ -1,10 +1,10 @@
 from torch import nn
 from sae.model import AutoEncoder as SAE
 
-class ConvVAESAE(nn.Module):
-    def __init__(self, dim=768, hidden_dim=20):
+class ConvCAESAE(nn.Module):
+    def __init__(self, dim=768, hidden_dim=100):
         super().__init__()
-        self.cnn = VAE(latent_dim=dim)
+        self.cnn = CNNAE(latent_dim=hidden_dim)
         self.sae = SAE(dim=hidden_dim, hidden_dim=hidden_dim)
 
     def forward(self, x, batch):
@@ -40,35 +40,49 @@ class ConvVAESAE(nn.Module):
         x = self.cnn.decode(z)
         return x
 
-class CNNSAE(nn.Module):
-    def __init__(self, dim, hidden_dim):
+class ConvVAESAE(nn.Module):
+    def __init__(self, dim=768, hidden_dim=100, n_agents=2):
         super().__init__()
-        self.cnn = CNNAE()
-        self.sae = SAE(dim=384, hidden_dim=hidden_dim)
+        self.cnn = VAE(latent_dim=dim)
+        self.sae = SAE(dim=hidden_dim, hidden_dim=hidden_dim * n_agents)
 
     def forward(self, x, batch):
         # x has shape (steps * envs * agents, ...)
-        z_cnn = self.cnn.encoder(x)  # (steps * agents, 11, 11, 3)
-        xr, _ = self.sae(z_cnn, batch=batch)  # (steps * agents, dim) ??
-        x_cnn = self.cnn.decoder(xr)  # (steps * agents, 88, 88, 3)
 
-        return x_cnn, self.cnn.decoder(z_cnn)
+        # Encoder with ConvVAE
+        mu, logvar = self.cnn.encode(x)  # (steps * agents, 11, 11, 3)
+        z = self.cnn.reparameterize(mu, logvar)
+
+        # Encode + Decode with SAE
+        zr, _ = self.sae(z, batch=batch)  # (steps * agents, dim) ??
+
+        # Decode SAE reconstruction with ConvVAE
+        x_recon = self.cnn.decode(zr)  # (steps * agents, 88, 88, 3)
+
+        # Decode original latent with ConvVAE
+        x_cnn_recon = self.cnn.decode(z)
+
+        return x_recon, x_cnn_recon, mu, logvar
 
     def encode(self, x, batch):
-        z_cnn = self.cnn.encoder(x)
-        z_sae = self.sae.encoder(z_cnn, batch=batch)
+        # Encode with Conv VAE
+        mu, logvar = self.cnn.encode(x)  # (steps * agents, 11, 11, 3)
+        z = self.cnn.reparameterize(mu, logvar)
+
+        # Encode with SAE
+        z_sae = self.sae.encoder(z, batch=batch)
+
         return z_sae
 
     def decode(self, z_sae):
-        x_sae = self.sae.decoder(z_sae)
-        x_cnn = self.cnn.decoder(x_sae)
-        return x_cnn
-
+        z = self.sae.decoder(z_sae)
+        x = self.cnn.decode(z)
+        return x
 
 class CNNAE(nn.Module):
     def __init__(self,
                  hidden_channels: int = 32,
-                 latent_dim: int = 384,
+                 latent_dim: int = 20,
                  act_fn: object = nn.LeakyReLU):
         super().__init__()
         self.encoder = nn.Sequential(
@@ -113,6 +127,12 @@ class CNNAE(nn.Module):
             nn.Tanh()  # The input images is scaled between -1 and 1, hence the output has to be bounded as well
         )
 
+    def encode(self, x):
+        return self.encoder(x)
+
+    def decode(self, z):
+        return self.decoder(z)
+
     def forward(self, x):
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
@@ -127,6 +147,7 @@ class VAE(nn.Module):
     def __init__(self,
                  hidden_channels: int = 32,
                  latent_dim: int = 384,
+                 mu_dim: int = 100,
                  act_fn: object = nn.LeakyReLU
                  ):
         super(VAE, self).__init__()
@@ -175,9 +196,9 @@ class VAE(nn.Module):
         )
 
         # self.fc1 = nn.Linear(784, 400)
-        self.fc21 = nn.Linear(latent_dim, 20)
-        self.fc22 = nn.Linear(latent_dim, 20)
-        self.fc3 = nn.Linear(20, latent_dim)
+        self.fc21 = nn.Linear(latent_dim, mu_dim)
+        self.fc22 = nn.Linear(latent_dim, mu_dim)
+        self.fc3 = nn.Linear(mu_dim, latent_dim)
         # self.fc4 = nn.Linear(latent_dim, 784)
 
     def encode(self, x):
@@ -211,5 +232,6 @@ def loss_function(recon_x, x, mu, logvar):
     # https://arxiv.org/abs/1312.6114
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return BCE + 0 * KLD
 
-    return BCE + KLD
+    # return BCE + 0.01 * KLD
