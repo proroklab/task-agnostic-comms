@@ -51,8 +51,9 @@ SCENARIO_CONFIG = {
         "reset_after": 500,
     },
     "coop_mining": {
-        "num_agents": 5,
-        "reset_after": 500,
+        "num_agents": 2,  # FIXME: Should be 6
+        "reset_after": 1000,
+        "max_steps": 1000,
     },
     "dropout": {
         "num_agents": 8,
@@ -149,4 +150,39 @@ SCENARIO_CONFIG = {
         "reset_after": 300,
         "max_steps": 300,
     },
+    "collaborative_cooking__figure_eight": {
+        "num_agents": 6,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "chicken_in_the_matrix__arena": {
+        "num_agents": 9,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "prisoners_dilemma_in_the_matrix__arena": {
+        "num_agents": 8,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "daycare": {
+        "num_agents": 2,
+        "reset_after": 1000,
+        "max_steps": 1000,
+    },
+    "chemistry__two_metabolic_cycles": {
+        "num_agents": 4,
+        "reset_after": 1000,
+        "max_steps": 1000,
+    },
+    "allelopathic_harvest__open": {
+        "num_agents": 2,
+        "reset_after": 1000,
+        "max_steps": 1000,
+    },
+    "collaborative_cooking__asymmetric": {
+        "num_agents": 2,
+        "reset_after": 1000,
+        "max_steps": 1000,
+    }
 }
