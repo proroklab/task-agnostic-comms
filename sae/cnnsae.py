@@ -41,9 +41,9 @@ class ConvCAESAE(nn.Module):
         return x
 
 class ConvVAESAE(nn.Module):
-    def __init__(self, dim=768, hidden_dim=100, n_agents=2):
+    def __init__(self, dim=768, hidden_dim=100, n_agents=2, obs_w=88):
         super().__init__()
-        self.cnn = VAE(latent_dim=dim)
+        self.cnn = VAE(latent_dim=dim, mu_dim=hidden_dim, obs_w=obs_w)
         self.sae = SAE(dim=hidden_dim, hidden_dim=hidden_dim * n_agents)
 
     def forward(self, x, batch):
@@ -148,9 +148,11 @@ class VAE(nn.Module):
                  hidden_channels: int = 32,
                  latent_dim: int = 384,
                  mu_dim: int = 100,
+                 obs_w: int = 88,
                  act_fn: object = nn.LeakyReLU
                  ):
         super(VAE, self).__init__()
+        obs_lat = round(obs_w / 8)
 
         self.encoder = nn.Sequential(
             nn.Conv2d(3, hidden_channels, kernel_size=3, padding=1, stride=2),  # 32x32 => 16x16, 88x88 => 44x44
@@ -167,17 +169,17 @@ class VAE(nn.Module):
             act_fn(),
             nn.Flatten(),  # Image grid to single feature vector
             # nn.Linear(hidden_channels * 2 * 4 * 4, latent_dim)
-            nn.Linear(hidden_channels * 2 * 11 * 11, latent_dim)
+            nn.Linear(hidden_channels * 2 * obs_lat * obs_lat, latent_dim)
         )
 
         self.decoder = nn.Sequential(
             # Linear
             # nn.Linear(latent_dim, hidden_channels * 2 * 4 * 4),
-            nn.Linear(latent_dim, hidden_channels * 2 * 11 * 11),
+            nn.Linear(latent_dim, hidden_channels * 2 * obs_lat * obs_lat),
             act_fn(),
             # Shape
             # nn.Unflatten(1, (2 * hidden_channels, 4, 4)),
-            nn.Unflatten(1, (2 * hidden_channels, 11, 11)),
+            nn.Unflatten(1, (2 * hidden_channels, obs_lat, obs_lat)),
             # CNN
             nn.ConvTranspose2d(2 * hidden_channels, 2 * hidden_channels, kernel_size=3, output_padding=1, padding=1,
                                stride=2),  # 4x4 => 8x8
@@ -232,6 +234,6 @@ def loss_function(recon_x, x, mu, logvar):
     # https://arxiv.org/abs/1312.6114
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    return BCE + 0 * KLD
+    return BCE + 0 * KLD  # TODO: Change back to 0
 
     # return BCE + 0.01 * KLD
