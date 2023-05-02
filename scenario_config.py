@@ -39,8 +39,8 @@ SCENARIO_CONFIG = {
     },
     "coins": {
         "num_agents": 2,
-        "reset_after": 1000,
-        "max_steps": 1000,
+        "reset_after": 2000,
+        "max_steps": 2000,
     },
     "pure_coordination_in_the_matrix__arena": {
         "num_agents": 8,
