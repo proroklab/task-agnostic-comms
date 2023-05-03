@@ -200,6 +200,7 @@ def policy(
         seed,
         render_env,
         wandb_name,
+        no_render_eval_callbacks,
         vmas_device="cpu",
 ):
     num_envs_per_worker = num_envs
@@ -220,7 +221,11 @@ def policy(
         "hom_multi_action", TorchHomogeneousMultiActionDistribution
     )
 
-    callbacks = [RenderingCallbacks, EvaluationCallbacks]
+    if no_render_eval_callbacks is True:
+        callbacks = []
+    else:
+        callbacks = [RenderingCallbacks, EvaluationCallbacks]
+
     if model == "joippo" and encoder is not None:
         callbacks.insert(0, ReconstructionLossCallbacks)
     if encoder_loss == 'policy':
@@ -354,6 +359,7 @@ if __name__ == "__main__":
     # Misc.
     parser.add_argument('--use_proj', action="store_true", default=False, help='project observations into higher space')
     parser.add_argument('--no_stand', action="store_true", default=False, help='do not standardise observations')
+    parser.add_argument('--no_render_eval_callbacks', action="store_true", default=False, help='disable render and eval callbacks for HPC')
 
     # Optional
     parser.add_argument('--render', action="store_true", default=False, help='Render environment')
@@ -391,5 +397,6 @@ if __name__ == "__main__":
         num_cpus_per_worker=args.num_cpus_per_worker,
         render_env=args.render,
         wandb_name=args.wandb_name,
+        no_render_eval_callbacks=args.no_render_eval_callbacks,
         seed=args.seed,
     )
