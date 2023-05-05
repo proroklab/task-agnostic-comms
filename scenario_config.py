@@ -184,5 +184,23 @@ SCENARIO_CONFIG = {
         "num_agents": 2,
         "reset_after": 1000,
         "max_steps": 1000,
+    },
+    "pure_coordination_in_the_matrix__repeated": {
+        "num_agents": 2,
+        "reset_after": 1000,
+        "max_steps": 1000,
+        "INVENTORY": 3,
+    },
+    "stag_hunt_in_the_matrix__repeated": {
+        "num_agents": 2,
+        "reset_after": 1000,
+        "max_steps": 1000,
+        "INVENTORY": 2,
+    },
+    "chicken_in_the_matrix__repeated": {
+        "num_agents": 2,
+        "reset_after": 1000,
+        "max_steps": 1000,
+        "INVENTORY": 2,
     }
 }
