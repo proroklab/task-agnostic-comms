@@ -202,5 +202,15 @@ SCENARIO_CONFIG = {
         "reset_after": 1000,
         "max_steps": 1000,
         "INVENTORY": 2,
-    }
+    },
+    "collaborative_cooking__circuit": {
+        "num_agents": 2,
+        "reset_after": 1000,
+        "max_steps": 1000,
+    },
+    "collaborative_cooking__forced": {
+        "num_agents": 2,
+        "reset_after": 1000,
+        "max_steps": 1000,
+    },
 }
