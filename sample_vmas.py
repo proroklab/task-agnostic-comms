@@ -1,5 +1,6 @@
 import argparse
 import time
+import numpy as np
 
 import torch
 from vmas import make_env
@@ -22,16 +23,15 @@ def _generate_random_action(previous_act, n_actions, num_envs, drift=0.8):
 
 
 def _generate_random_action_cont(previous_act, action_space, num_envs, drift=0.8):
-    rand_action = torch.tensor([action_space.sample() for _ in range(num_envs)])
+    rand_action = torch.tensor(np.array([action_space.sample() for _ in range(num_envs)]))
     if previous_act is None:
         return rand_action
     else:
         new_act = previous_act.clone()
-        new_act += torch.normal(0.0, 0.1, size=new_act.shape)
-        if action_space.contains(new_act) is False:
-            return rand_action
-        else:
-            return new_act
+        new_act += torch.normal(0.0, 0.25, size=new_act.shape)
+        valid = torch.tensor(np.array([action_space.contains(act) for act in new_act]))
+        new_act[~valid] = rand_action[~valid]
+        return new_act
 
 
 def sample(
@@ -39,7 +39,8 @@ def sample(
         random_obs,
         steps,
         num_envs,
-        render
+        render,
+        continuous
 ):
     init_time = time.time()
 
@@ -51,12 +52,13 @@ def sample(
         scenario=scenario_name,
         num_envs=num_envs,
         device=Config.device,
-        continuous_actions=False,
+        continuous_actions=continuous,
         n_agents=num_agents,
     )
 
     obs_size = env.observation_space[0].shape[0]
-    num_actions = env.action_space[0].n - 1
+    if not continuous:
+        num_actions = env.action_space[0].n - 1
     num_envs = 1 if random_obs else num_envs
 
     agent_observations = torch.empty((
@@ -80,8 +82,10 @@ def sample(
             # Generate action
             actions = []
             for i in range(num_agents):
-                # act = _generate_random_action_cont(prev_act[i], env.action_space[i], num_envs)
-                act = _generate_random_action(prev_act[i], num_actions, num_envs)
+                if continuous:
+                    act = _generate_random_action_cont(prev_act[i], env.action_space[i], num_envs)
+                else:
+                    act = _generate_random_action(prev_act[i], num_actions, num_envs)
                 actions.append(act)
                 prev_act[i] = act
 
@@ -128,6 +132,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Sample observations randomly from VMAS scenarios')
     parser.add_argument('-c', '--scenario', default=None, help='VMAS scenario')
     parser.add_argument('-r', '--random', action='store_true', default=False, help='Sample randomly directly from observation space')
+    parser.add_argument('--continuous', action='store_true', default=False, help='use continuous actions')
+
     parser.add_argument('--steps', default=200, type=int, help='number of sampling steps')
     parser.add_argument('--num_envs', default=32, type=int, help='vectorized environments to sample from')
     parser.add_argument('--render', action='store_true', default=False, help='render scenario while sampling')
@@ -143,4 +149,5 @@ if __name__ == "__main__":
         args.steps,
         args.num_envs,
         args.render,
+        args.continuous,
     )
