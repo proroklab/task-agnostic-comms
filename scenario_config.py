@@ -51,7 +51,7 @@ SCENARIO_CONFIG = {
         "reset_after": 500,
     },
     "coop_mining": {
-        "num_agents": 2,  # FIXME: Should be 6
+        "num_agents": 6,
         "reset_after": 1000,
         "max_steps": 1000,
     },
