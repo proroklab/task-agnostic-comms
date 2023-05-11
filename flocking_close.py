@@ -23,7 +23,7 @@ class Scenario(BaseScenario):
         self.dist_shaping_factor = kwargs.get("dist_shaping_factor", 1)
 
         self.plot_grid = True
-        self.desired_distance = 0.1
+        self.desired_distance = 0.01
         self.min_collision_distance = 0.005
         self.x_dim = 1
         self.y_dim = 1
@@ -140,6 +140,7 @@ class Scenario(BaseScenario):
             self.t[env_index] = 0
 
     def reward(self, agent: Agent):
+
         is_first = self.world.policy_agents.index(agent) == 0
 
         if is_first:
