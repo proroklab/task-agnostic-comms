@@ -90,7 +90,7 @@ SCENARIO_CONFIG = {
         "reset_after": 500,
         "max_steps": 500,
     },
-    "flocking_matteo": {
+    "flocking_close": {
         "num_agents": 4,
         "reset_after": 500,
         "max_steps": 500,
