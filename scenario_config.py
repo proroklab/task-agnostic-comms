@@ -52,8 +52,8 @@ SCENARIO_CONFIG = {
     },
     "coop_mining": {
         "num_agents": 6,
-        "reset_after": 1000,
-        "max_steps": 1000,
+        "reset_after": 5000,
+        "max_steps": 5000,
     },
     "dropout": {
         "num_agents": 8,
@@ -85,8 +85,23 @@ SCENARIO_CONFIG = {
         "reset_after": 500,
         "max_steps": 500,
     },
+    "flocking1": {
+        "num_agents": 1,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "flocking2": {
+        "num_agents": 2,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "flocking3": {
+        "num_agents": 3,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
     "flocking": {
-        "num_agents": 4,
+        "num_agents": 5,
         "reset_after": 500,
         "max_steps": 500,
     },
