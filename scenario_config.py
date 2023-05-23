@@ -1,8 +1,8 @@
 SCENARIO_CONFIG = {
     "discovery": {
         "num_agents": 4,
-        "reset_after": 200,
-        "max_steps": 200,
+        "reset_after": 500,
+        "max_steps": 500,
     },
     "custom_discovery": {
         "num_agents": 4,

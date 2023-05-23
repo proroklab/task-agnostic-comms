@@ -50,6 +50,11 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
             self.data_mean = torch.load(f'{cwd}/scalers/mean_{scenario_name}.pt', map_location=torch.device(device))
             self.data_std = torch.load(f'{cwd}/scalers/std_{scenario_name}.pt', map_location=torch.device(device))
 
+            # Match dimensions if agent size is larger than training
+            n = self.n_agents // self.data_mean.shape[0] + 1
+            self.data_mean = self.data_mean.repeat(n, 1)[:self.n_agents]
+            self.data_std = self.data_std.repeat(n, 1)[:self.n_agents]
+
         # Load the set autoencoder if provided, or construct a new one if not.
         if self.encoder_type is not None:
             if encoder_file is not None:

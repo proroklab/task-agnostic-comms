@@ -47,6 +47,10 @@ def sample(
     num_agents = SCENARIO_CONFIG[scenario_name]["num_agents"]
     reset_after = SCENARIO_CONFIG[scenario_name]["reset_after"]
 
+    if "flocking" in scenario_name:
+        tmp_scenario_name = scenario_name
+        scenario_name = "flocking"
+
     # Construct VMAS environment
     env = make_env(
         scenario=scenario_name,
@@ -116,6 +120,9 @@ def sample(
 
             if s % 10 == 0:
                 print(f"{s}/{steps}")
+
+    if scenario_name == "flocking":
+        scenario_name = tmp_scenario_name
 
     timestr = time.strftime("%Y%m%d-%H%M%S")
     torch.save(agent_observations, f'samples/{scenario_name}_{timestr}.pt')

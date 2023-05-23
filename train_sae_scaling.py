@@ -73,26 +73,47 @@ def train(
     set_size = SCENARIO_CONFIG[scenario_name]["num_agents"]
 
     # Load and process data
-    data = _load_data(data_file, scenario_name, time_str, use_proj, no_stand)
-    train_data, test_data = _train_test_split(data, train_proportion=0.8, test_lim=test_lim)
+    data1 = _load_data("samples/flocking1.pt", scenario_name, time_str, use_proj, no_stand)
+    data2 = _load_data("samples/flocking2.pt", scenario_name, time_str, use_proj, no_stand)
+    data3 = _load_data("samples/flocking3.pt", scenario_name, time_str, use_proj, no_stand)
+
+    data_list = []
+    size_list = []
+    for d1, d2, d3 in zip(data1, data2, data3):
+        data_list.append(d1)
+        data_list.append(d2)
+        data_list.append(d3)
+        size_list.append(torch.tensor([d1.shape[0]]))
+        size_list.append(torch.tensor([d2.shape[0]]))
+        size_list.append(torch.tensor([d3.shape[0]]))
+
+    import random
+    c = list(zip(data_list, size_list))
+    random.shuffle(c)
+    data_list, size_list = zip(*c)
+
+    train_size = int(len(data_list) * 0.95)
+    test_size = min(len(data_list) - train_size, 256)
+
+    # train_data, test_data = _train_test_split(data, train_proportion=0.8, test_lim=test_lim)
 
     # Flatten first two dimensions to put samples and agents together to get [samples, obs_dim]
     # as agents will be accounted for by the batch index
-    train_data = torch.flatten(train_data, start_dim=0, end_dim=1).to(Config.device)
-    test_data = torch.flatten(test_data, start_dim=0, end_dim=1).to(Config.device)
-
-    batch_train = torch.arange(batches_per_epoch // set_size, device=Config.device).repeat_interleave(set_size)
-    batch_test = torch.arange(test_data.shape[0] // set_size, device=Config.device).repeat_interleave(set_size)
+    # train_data = torch.flatten(train_data, start_dim=0, end_dim=1).to(Config.device)
+    # test_data = torch.flatten(test_data, start_dim=0, end_dim=1).to(Config.device)
+    #
+    # batch_train = torch.arange(batches_per_epoch // set_size, device=Config.device).repeat_interleave(set_size)
+    # batch_test = torch.arange(test_data.shape[0] // set_size, device=Config.device).repeat_interleave(set_size)
 
     # Construct the autoencoder
-    model_dim = data.shape[-1]
+    model_dim = 18
     if model_type == "sae":
         autoencoder = SAE(dim=model_dim, hidden_dim=latent_dim).to(Config.device)
     else:
         autoencoder = MLPAE(dim=model_dim, hidden_dim=latent_dim, n_agents=set_size).to(Config.device)
     optimizer = Adam(autoencoder.parameters())
 
-    epochs = len(train_data) // batches_per_epoch
+    epochs = train_size // batches_per_epoch
 
     print(f"Training model using device {Config.device} for {epochs} epochs")
 
@@ -104,78 +125,89 @@ def train(
         sync_tensorboard=True,
         config={
             "epochs": epochs,
-            "train_size": len(train_data),
-            "test_size": len(test_data),
+            "train_size": train_size,
+            "test_size": test_size,
         }
     )
 
-    for epoch in range(epochs):
+    for episodes in range(3):
+        for epoch in range(epochs):
 
-        optimizer.zero_grad()
+            optimizer.zero_grad()
 
-        x = train_data[epoch * batches_per_epoch: (epoch + 1) * batches_per_epoch]
-        xr, _ = autoencoder(x, batch=batch_train)
+            data_x = data_list[epoch * batches_per_epoch: (epoch + 1) * batches_per_epoch]
+            size_x = size_list[epoch * batches_per_epoch: (epoch + 1) * batches_per_epoch]
+            x = torch.cat(data_x, dim=0).to(Config.device)
+            sizes = torch.cat(size_x, dim=0)
+            batch_train = torch.arange(sizes.numel()).repeat_interleave(sizes).to(Config.device)
 
-        if model_type == "sae":
-            train_loss_vars = autoencoder.loss()
-            sae_loss = train_loss_vars["loss"]
-            sae_loss.backward()
-        else:
-            mse_loss = torch.nn.functional.mse_loss(x, xr)
-
-        optimizer.step()
-
-        with torch.no_grad():
-
-            xr, _ = autoencoder(test_data, batch=batch_test)
+            xr, _ = autoencoder(x, batch=batch_train)
 
             if model_type == "sae":
-                test_loss_vars = autoencoder.loss()
+                train_loss_vars = autoencoder.loss()
+                sae_loss = train_loss_vars["loss"]
+                sae_loss.backward()
             else:
-                test_mse_loss = torch.nn.functional.mse_loss(test_data, xr)
+                mse_loss = torch.nn.functional.mse_loss(x, xr)
 
-            if epoch % 1000 == 0:
+            optimizer.step()
 
-                print("\t Epoch", epoch)
+            with torch.no_grad():
+
+                data_x = data_list[-test_size:]
+                size_x = size_list[-test_size:]
+                test_data = torch.cat(data_x, dim=0).to(Config.device)
+                sizes = torch.cat(size_x, dim=0)
+                batch_test = torch.arange(sizes.numel()).repeat_interleave(sizes).to(Config.device)
+                xr, _ = autoencoder(test_data, batch=batch_test)
+
                 if model_type == "sae":
-                    print("----- TRAIN -----")
-                    print(train_loss_vars)
-                    print("----- TEST -----")
-                    print(test_loss_vars)
+                    test_loss_vars = autoencoder.loss()
                 else:
-                    print("----- TRAIN -----")
-                    print(mse_loss)
-                    print("----- TEST -----")
-                    print(test_mse_loss)
+                    test_mse_loss = torch.nn.functional.mse_loss(test_data, xr)
 
-                if model_type == "sae":
-                    if len(xr) >= set_size:
-                        inputs_sorted = autoencoder.encoder.get_x()
-                        print("Length (source, recon)", inputs_sorted[0:set_size].shape, xr[0:set_size].shape)
-                        print("Source", inputs_sorted[0:set_size])
+                if epoch % 1000 == 0:
+
+                    print("\t Epoch", epoch)
+                    if model_type == "sae":
+                        print("----- TRAIN -----")
+                        print(train_loss_vars)
+                        print("----- TEST -----")
+                        print(test_loss_vars)
+                    else:
+                        print("----- TRAIN -----")
+                        print(mse_loss)
+                        print("----- TEST -----")
+                        print(test_mse_loss)
+
+                    if model_type == "sae":
+                        if len(xr) >= set_size:
+                            inputs_sorted = autoencoder.encoder.get_x()
+                            print("Length (source, recon)", inputs_sorted[0:set_size].shape, xr[0:set_size].shape)
+                            print("Source", inputs_sorted[0:set_size])
+                            print("Recon", xr[0:set_size])
+                    else:
+                        print("Source", test_data[0:set_size])
                         print("Recon", xr[0:set_size])
-                else:
-                    print("Source", test_data[0:set_size])
-                    print("Recon", xr[0:set_size])
 
-                if epoch % 2000 == 0 and epoch != 0:
-                    time_str = time.strftime("%Y%m%d-%H%M%S")
-                    file_str = f"weights/{model_type}_{scenario_name}_{epoch}_{time_str}.pt"
-                    torch.save(autoencoder, file_str)
+                    if epoch % 2000 == 0 and epoch != 0:
+                        time_str = time.strftime("%Y%m%d-%H%M%S")
+                        file_str = f"weights/{model_type}_{scenario_name}_{epoch}_{time_str}.pt"
+                        torch.save(autoencoder, file_str)
 
-            wandb.log({
-                          "train_loss": train_loss_vars["loss"],
-                          "mse_loss": train_loss_vars["mse_loss"],
-                          "size_loss": train_loss_vars["size_loss"],
-                          "corr": train_loss_vars["corr"],
-                          "test_loss": test_loss_vars["loss"],
-                          "test_mse_loss": test_loss_vars["mse_loss"],
-                          "test_size_loss": test_loss_vars["size_loss"],
-                          "test_corr": test_loss_vars["corr"],
-                      } if model_type == "sae" else {
-                "train_loss": mse_loss,
-                "test_loss": test_mse_loss,
-            })
+                wandb.log({
+                              "train_loss": train_loss_vars["loss"],
+                              "mse_loss": train_loss_vars["mse_loss"],
+                              "size_loss": train_loss_vars["size_loss"],
+                              "corr": train_loss_vars["corr"],
+                              "test_loss": test_loss_vars["loss"],
+                              "test_mse_loss": test_loss_vars["mse_loss"],
+                              "test_size_loss": test_loss_vars["size_loss"],
+                              "test_corr": test_loss_vars["corr"],
+                          } if model_type == "sae" else {
+                    "train_loss": mse_loss,
+                    "test_loss": test_mse_loss,
+                })
 
     run.finish()
 
@@ -201,7 +233,8 @@ if __name__ == "__main__":
     parser.add_argument('--latent', default=16, type=int, help='latent dimension of set autoencoder to use')
     parser.add_argument('--data', help='file to load for training data (sampled observations)')
     parser.add_argument('--ae_type', default='sae', help='select autoencoder type: sae/mlp')
-    parser.add_argument('--use_proj', action='store_true', default=False, help='project observations into high-dimensional space')
+    parser.add_argument('--use_proj', action='store_true', default=False,
+                        help='project observations into high-dimensional space')
     parser.add_argument('--no_stand', action='store_true', default=False, help='do not standardise inputs')
 
     parser.add_argument('-c', '--scenario', default=None, help='VMAS scenario')
