@@ -51,7 +51,13 @@ class VAE(nn.Module):
                  act_fn: object = nn.LeakyReLU
                  ):
         super(VAE, self).__init__()
+        self.obs_w = obs_w
         obs_lat = round(obs_w / 8)
+        self.must_scale = False
+        if obs_w % 8 != 0:
+            self.must_scale = True
+            self.new_w = obs_w - (obs_w % 8)
+            obs_lat = self.new_w // 8
 
         self.encoder = nn.Sequential(
             nn.Conv2d(3, hidden_channels, kernel_size=3, padding=1, stride=2),  # 32x32 => 16x16, 88x88 => 44x44
@@ -104,6 +110,10 @@ class VAE(nn.Module):
 
     def encode(self, x):
         # h1 = F.relu(self.fc1(x))
+
+        if self.must_scale:
+            x = nn.functional.interpolate(x, size=[x.shape[0], 3, self.new_w, self.new_w])
+
         h1 = self.encoder(x)
         return self.fc21(h1), self.fc22(h1)
 
@@ -116,7 +126,12 @@ class VAE(nn.Module):
         # h3 = F.relu(self.fc3(z))
         h3 = F.relu(self.fc3(z))
         # return torch.sigmoid(self.fc4(h3))
-        return self.decoder(h3)
+        out = self.decoder(h3)
+
+        if self.must_scale:
+            out = nn.functional.interpolate(out, size=[out.shape[0], 3, self.obs_w, self.obs_w])
+
+        return out
 
     def forward(self, x):
         mu, logvar = self.encode(x)
