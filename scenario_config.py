@@ -31,11 +31,12 @@ SCENARIO_CONFIG = {
     },
     "collaborative_cooking__crowded": {
         "num_agents": 9,
-        "reset_after": 500,
+        "reset_after": 2000,
     },
     "collaborative_cooking__cramped": {
         "num_agents": 2,
-        "reset_after": 500,
+        "reset_after": 2000,
+        "max_steps": 2000,
     },
     "coins": {
         "num_agents": 2,
@@ -202,8 +203,8 @@ SCENARIO_CONFIG = {
     },
     "collaborative_cooking__asymmetric": {
         "num_agents": 2,
-        "reset_after": 1000,
-        "max_steps": 1000,
+        "reset_after": 2000,
+        "max_steps": 2000,
     },
     "pure_coordination_in_the_matrix__repeated": {
         "num_agents": 2,
@@ -225,12 +226,17 @@ SCENARIO_CONFIG = {
     },
     "collaborative_cooking__circuit": {
         "num_agents": 2,
-        "reset_after": 1000,
-        "max_steps": 1000,
+        "reset_after": 2000,
+        "max_steps": 2000,
     },
     "collaborative_cooking__forced": {
         "num_agents": 2,
-        "reset_after": 1000,
-        "max_steps": 1000,
+        "reset_after": 2000,
+        "max_steps": 2000,
+    },
+    "collaborative_cooking": {
+        "num_agents": 2,
+        "reset_after": 2000,
+        "max_steps": 2000,
     },
 }
