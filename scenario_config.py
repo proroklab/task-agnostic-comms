@@ -47,10 +47,6 @@ SCENARIO_CONFIG = {
         "num_agents": 8,
         "reset_after": 500,
     },
-    "bach_or_stravinsky_in_the_matrix__repeated": {
-        "num_agents": 2,
-        "reset_after": 500,
-    },
     "coop_mining": {
         "num_agents": 6,
         "reset_after": 5000,
@@ -208,20 +204,26 @@ SCENARIO_CONFIG = {
     },
     "pure_coordination_in_the_matrix__repeated": {
         "num_agents": 2,
-        "reset_after": 1000,
-        "max_steps": 1000,
+        "reset_after": 2000,
+        "max_steps": 2000,
         "INVENTORY": 3,
     },
     "stag_hunt_in_the_matrix__repeated": {
         "num_agents": 2,
-        "reset_after": 1000,
-        "max_steps": 1000,
+        "reset_after": 2000,
+        "max_steps": 2000,
         "INVENTORY": 2,
     },
     "chicken_in_the_matrix__repeated": {
         "num_agents": 2,
-        "reset_after": 1000,
-        "max_steps": 1000,
+        "reset_after": 2000,
+        "max_steps": 2000,
+        "INVENTORY": 2,
+    },
+    "bach_or_stravinsky_in_the_matrix__repeated": {
+        "num_agents": 2,
+        "reset_after": 2000,
+        "max_steps": 2000,
         "INVENTORY": 2,
     },
     "collaborative_cooking__circuit": {
@@ -235,6 +237,11 @@ SCENARIO_CONFIG = {
         "max_steps": 2000,
     },
     "collaborative_cooking": {
+        "num_agents": 2,
+        "reset_after": 2000,
+        "max_steps": 2000,
+    },
+    "chicken_bach": {
         "num_agents": 2,
         "reset_after": 2000,
         "max_steps": 2000,
