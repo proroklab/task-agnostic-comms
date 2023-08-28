@@ -24,27 +24,8 @@ def _load_data(data_file, scenario_name, time_str, use_proj, no_stand):
     # Shuffle the data (but only in the first dimension)
     data = data[torch.randperm(data.size()[0])]
 
-    # Generate random matrix with which we project data to higher dimension
-    if use_proj is True:
-        data = data[:data.size()[0] // 4]
-        proj = torch.rand((data.shape[-1], 1024))  # Use Atari size. 1024
-        torch.save(proj, f'scalers/proj_{scenario_name}_{time_str}.pt')
-        data = (data.to('cpu') @ proj).to('cpu')
-
-    # Cache mean and standard deviation for rescaling later
-    if no_stand is False:
-        mean = data.mean(0)
-        std = data.std(0)
-        torch.save(mean, f'scalers/mean_{scenario_name}_{time_str}.pt')
-        torch.save(std, f'scalers/std_{scenario_name}_{time_str}.pt')
-
-        # Normalise observations to zero mean and unit variance in feature channels
-        data = (data - mean) / std
-
-        # Replace any NaNs introduced by zero-division
-        data = torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
-
-    # data[data != data] = 0
+    # Standardise data
+    data /= 5.0
 
     print("Loaded data with shape", data.shape)
 
@@ -161,7 +142,7 @@ def train(
                 if epoch % 2000 == 0 and epoch != 0:
                     time_str = time.strftime("%Y%m%d-%H%M%S")
                     file_str = f"weights/{model_type}_{scenario_name}_{epoch}_{time_str}.pt"
-                    torch.save(autoencoder, file_str)
+                    torch.save(autoencoder.state_dict(), file_str)
 
             wandb.log({
                           "train_loss": train_loss_vars["loss"],
@@ -191,7 +172,7 @@ def train(
 
     # Save model
     file_str = f"weights/{model_type}_{scenario_name}_{time_str}.pt"
-    torch.save(autoencoder, file_str)
+    torch.save(autoencoder.state_dict(), file_str)
     print(f"Saved model to {file_str}")
 
 
