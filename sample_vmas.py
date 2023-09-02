@@ -142,7 +142,7 @@ if __name__ == "__main__":
     parser.add_argument('--continuous', action='store_true', default=False, help='use continuous actions')
 
     parser.add_argument('--steps', default=200, type=int, help='number of sampling steps')
-    parser.add_argument('--num_envs', default=32, type=int, help='vectorized environments to sample from')
+    parser.add_argument('--num_envs', default=128, type=int, help='vectorized environments to sample from')
     parser.add_argument('--render', action='store_true', default=False, help='render scenario while sampling')
     parser.add_argument('-d', '--device', default='cuda')
     args = parser.parse_args()
