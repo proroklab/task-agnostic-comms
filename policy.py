@@ -8,9 +8,6 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.typing import PolicyID, AgentID
 
-from model_ippo import PolicyIPPO
-from model_cppo import PolicyCPPO
-from model_hetippo import PolicyHetIPPO
 from model_joippo import PolicyJOIPPO
 
 from multi_action_dist import TorchHomogeneousMultiActionDistribution
@@ -178,6 +175,9 @@ def env_creator(config: Dict):
 def setup_callbacks(**kwargs):
     if kwargs["excalibur"]:
         callbacks = []
+        if not kwargs["no_comms"]:
+            # Log AE / PISA loss when they are being used
+            callbacks.insert(0, ReconstructionLossCallbacks)
         if kwargs["train_specific"]:
             # Checkpoint PISA when trained with policy loss
             callbacks.insert(0, SAECheckpointCallbacks)
@@ -265,12 +265,12 @@ def policy(**kwargs):
             "clip_param": 0.2,
             "vf_loss_coeff": 1,
             "vf_clip_param": float("inf"),
-            "entropy_coeff": 0.01,
+            "entropy_coeff": 0,
             "train_batch_size": kwargs["train_batch_size"],
             # Should remain close to max steps to avoid bias
             "rollout_fragment_length": kwargs["rollout_fragment_length"],
             "sgd_minibatch_size": kwargs["sgd_minibatch_size"],
-            "num_sgd_iter": 45,
+            "num_sgd_iter": 40,
             "num_gpus": num_gpus,
             "num_workers": kwargs["num_workers"],
             "num_envs_per_worker": kwargs["num_envs"],
@@ -278,7 +278,7 @@ def policy(**kwargs):
             "gamma": 0.99,
             "use_gae": True,
             "use_critic": True,
-            "batch_mode": "complete_episodes",
+            "batch_mode": "truncate_episodes",
             "model": {
                 "custom_model": "policy_net",
                 "custom_action_dist": "hom_multi_action",
@@ -292,7 +292,7 @@ def policy(**kwargs):
                 "device": "cpu",
                 "num_envs": kwargs["num_envs"],
                 "scenario_name": kwargs["scenario"],
-                "continuous_actions": True,
+                "continuous_actions": False,
                 "max_steps": kwargs["max_steps"],
                 "share_reward": True,
                 # Scenario specific variables
@@ -311,7 +311,6 @@ def policy(**kwargs):
                 },
                 "callbacks": MultiCallbacks(callbacks),
             },
-            "callbacks": EvaluationCallbacks,
         },
     )
     wandb.finish()
@@ -337,7 +336,7 @@ if __name__ == "__main__":
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
     parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='sgd minibatch size')
     parser.add_argument('--training_iterations', default=100, type=int, help='number of training iterations')
-    parser.add_argument('--rollout_fragment_length', default=100, type=int, help='Rollout fragment length')
+    parser.add_argument('--rollout_fragment_length', default=125, type=int, help='Rollout fragment length')
     parser.add_argument('--eval_interval', default=10, type=int, help='Evaluation interval')
     parser.add_argument('--num_envs', default=32, type=int)
     parser.add_argument('--num_workers', default=5, type=int)
