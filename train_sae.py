@@ -90,73 +90,80 @@ def train(
         }
     )
 
-    for epoch in range(epochs):
+    iteration = 0
+    while True:
 
-        optimizer.zero_grad()
+        print(f"Iteration {iteration}")
+        iteration += 1
 
-        x = train_data[epoch * batches_per_epoch: (epoch + 1) * batches_per_epoch]
-        xr, _ = autoencoder(x, batch=batch_train)
+        for epoch in range(epochs):
 
-        if model_type == "sae":
-            train_loss_vars = autoencoder.loss()
-            sae_loss = train_loss_vars["loss"]
-            sae_loss.backward()
-        else:
-            mse_loss = torch.nn.functional.mse_loss(x, xr)
+            optimizer.zero_grad()
 
-        optimizer.step()
-
-        with torch.no_grad():
-
-            xr, _ = autoencoder(test_data, batch=batch_test)
+            x = train_data[epoch * batches_per_epoch: (epoch + 1) * batches_per_epoch]
+            xr, _ = autoencoder(x, batch=batch_train)
 
             if model_type == "sae":
-                test_loss_vars = autoencoder.loss()
+                train_loss_vars = autoencoder.loss()
+                sae_loss = train_loss_vars["loss"]
+                sae_loss.backward()
             else:
-                test_mse_loss = torch.nn.functional.mse_loss(test_data, xr)
+                mse_loss = torch.nn.functional.mse_loss(x, xr)
 
-            if epoch % 1000 == 0:
+            optimizer.step()
 
-                print("\t Epoch", epoch)
+            with torch.no_grad():
+
+                xr, _ = autoencoder(test_data, batch=batch_test)
+
                 if model_type == "sae":
-                    print("----- TRAIN -----")
-                    print(train_loss_vars)
-                    print("----- TEST -----")
-                    print(test_loss_vars)
+                    test_loss_vars = autoencoder.loss()
                 else:
-                    print("----- TRAIN -----")
-                    print(mse_loss)
-                    print("----- TEST -----")
-                    print(test_mse_loss)
+                    test_mse_loss = torch.nn.functional.mse_loss(test_data, xr)
 
-                if model_type == "sae":
-                    if len(xr) >= set_size:
-                        inputs_sorted = autoencoder.encoder.get_x()
-                        print("Length (source, recon)", inputs_sorted[0:set_size].shape, xr[0:set_size].shape)
-                        print("Source", inputs_sorted[0:set_size])
+                if epoch % 1000 == 0:
+
+                    print("\t Epoch", epoch)
+                    if model_type == "sae":
+                        print("----- TRAIN -----")
+                        print(train_loss_vars)
+                        print("----- TEST -----")
+                        print(test_loss_vars)
+                    else:
+                        print("----- TRAIN -----")
+                        print(mse_loss)
+                        print("----- TEST -----")
+                        print(test_mse_loss)
+
+                    if model_type == "sae":
+                        if len(xr) >= set_size:
+                            inputs_sorted = autoencoder.encoder.get_x()
+                            print("Length (source, recon)", inputs_sorted[0:set_size].shape, xr[0:set_size].shape)
+                            print("Source", inputs_sorted[0:set_size])
+                            print("Recon", xr[0:set_size])
+                    else:
+                        print("Source", test_data[0:set_size])
                         print("Recon", xr[0:set_size])
-                else:
-                    print("Source", test_data[0:set_size])
-                    print("Recon", xr[0:set_size])
 
-                if epoch % 2000 == 0 and epoch != 0:
-                    time_str = time.strftime("%Y%m%d-%H%M%S")
-                    file_str = f"weights/{model_type}_{scenario_name}_{epoch}_{time_str}.pt"
-                    torch.save(autoencoder.state_dict(), file_str)
+                    if epoch % 2000 == 0 and epoch != 0:
+                        time_str = time.strftime("%Y%m%d-%H%M%S")
+                        file_str = f"weights/{model_type}_{scenario_name}_{epoch}_{time_str}.pt"
+                        torch.save(autoencoder.state_dict(), file_str)
+                        torch.save(autoencoder.state_dict(), f"weights/{model_type}_{scenario_name}_latest.pt")
 
-            wandb.log({
-                          "train_loss": train_loss_vars["loss"],
-                          "mse_loss": train_loss_vars["mse_loss"],
-                          "size_loss": train_loss_vars["size_loss"],
-                          "corr": train_loss_vars["corr"],
-                          "test_loss": test_loss_vars["loss"],
-                          "test_mse_loss": test_loss_vars["mse_loss"],
-                          "test_size_loss": test_loss_vars["size_loss"],
-                          "test_corr": test_loss_vars["corr"],
-                      } if model_type == "sae" else {
-                "train_loss": mse_loss,
-                "test_loss": test_mse_loss,
-            })
+                wandb.log({
+                            "train_loss": train_loss_vars["loss"],
+                            "mse_loss": train_loss_vars["mse_loss"],
+                            "size_loss": train_loss_vars["size_loss"],
+                            "corr": train_loss_vars["corr"],
+                            "test_loss": test_loss_vars["loss"],
+                            "test_mse_loss": test_loss_vars["mse_loss"],
+                            "test_size_loss": test_loss_vars["size_loss"],
+                            "test_corr": test_loss_vars["corr"],
+                        } if model_type == "sae" else {
+                    "train_loss": mse_loss,
+                    "test_loss": test_mse_loss,
+                })
 
     run.finish()
 
