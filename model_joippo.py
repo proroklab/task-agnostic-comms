@@ -42,15 +42,24 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         obs_size = observation_space.shape[0] // self.n_agents
 
         if self.task_agnostic or self.task_specific:
-            # Load pre-trained PISA
-            self.pisa = PISA(
-                dim=self.pisa_dim,
-                hidden_dim=self.pisa_dim * self.n_agents
-            ).to(device)
-            self.pisa.load_state_dict(torch.load(
-                self.pisa_path,
-                map_location=torch.device(device)
-            ))
+
+            # Load state dict.
+            if self.task_agnostic:
+                # Load pre-trained PISA
+                self.pisa = PISA(
+                    dim=self.pisa_dim,
+                    hidden_dim=self.pisa_dim * self.n_agents
+                ).to(device)
+                self.pisa.load_state_dict(torch.load(
+                    self.pisa_path,
+                    map_location=torch.device(device)
+                ))
+            else:
+                # Load entire model
+                self.pisa = torch.load(
+                    self.pisa_path,
+                    map_location=torch.device(device)
+                )
 
             # Freeze PISA
             for p in self.pisa.parameters():
