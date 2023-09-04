@@ -239,7 +239,7 @@ def policy(**kwargs):
     # Train policy!
     ray.tune.run(
         MultiPPOTrainer,
-        local_dir="/local/scratch-2/dhj26" if kwargs["excalibur"] else "~/ray_results",
+        local_dir="/local/scratch-2/dhj26" if kwargs["excalibur"] else "/rds/user/dhj26/hpc-work/ray_results",
         name=f"PPO_{time.strftime('%Y%m%d-%H%M%S')}",
         stop={"training_iteration": kwargs["training_iterations"]},
         checkpoint_freq=1,

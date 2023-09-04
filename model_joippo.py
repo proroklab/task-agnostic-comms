@@ -15,7 +15,7 @@ from sae.model import AutoEncoder as PISA
 import torch
 from scenario_config import SCENARIO_CONFIG
 
-POLICY_WIDTH=64
+POLICY_WIDTH=256 # Try 256? Try 1024 for melting pot
 VALUE_WIDTH=256
 
 class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
