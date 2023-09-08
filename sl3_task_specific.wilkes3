@@ -22,7 +22,7 @@
 #! Note that the job submission script will enforce no more than 32 cpus per GPU.
 #SBATCH --gres=gpu:1
 #! How much wallclock time will be required?
-#SBATCH --time=12:00:00
+#SBATCH --time=6:00:00
 #! What types of email messages do you wish to receive?
 #SBATCH --mail-type=NONE
 #! Uncomment this to prevent the job from being requeued (e.g. if
@@ -57,7 +57,7 @@ module load rhel8/default-amp              # REQUIRED - loads the basic environm
 application="python policy.py"
 
 #! Run options for the application:
-options="--task_specific --scenario $1 --pisa_dim $2 --pisa_path $3 --seed $4 --training_iterations 1000"
+options="--task_specific --scenario $1 --pisa_dim $2 --pisa_path $3 --seed $4 --training_iterations 100"
 
 #! Work directory (i.e. where the job will run):
 workdir="$SLURM_SUBMIT_DIR"  # The value of SLURM_SUBMIT_DIR sets workdir to the directory
