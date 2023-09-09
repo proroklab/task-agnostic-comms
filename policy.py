@@ -173,7 +173,7 @@ def env_creator(config: Dict):
     return env
 
 def setup_callbacks(**kwargs):
-    if kwargs["excalibur"]:
+    if kwargs["excalibur"] or kwargs["merlin"]:
         callbacks = []
         if not kwargs["no_comms"]:
             # Log AE / PISA loss when they are being used
@@ -201,7 +201,7 @@ def policy(**kwargs):
     callbacks = setup_callbacks(**kwargs)
 
     if not ray.is_initialized():
-        if kwargs["excalibur"]:
+        if kwargs["excalibur"] or kwargs["merlin"]:
             ray.init(address="auto")
         else:
             ray.init()
@@ -234,6 +234,7 @@ def policy(**kwargs):
     print(f"pisa path = {kwargs['pisa_path']}")
     print(f"pisa latent dim = {kwargs['pisa_dim']}")
     print(f"excalibur = {kwargs['excalibur']}")
+    print(f"merlin = {kwargs['merlin']}")
     print("\n\n-----------------------------------------------------------\n\n")
 
     if kwargs["excalibur"]:
