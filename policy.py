@@ -236,10 +236,17 @@ def policy(**kwargs):
     print(f"excalibur = {kwargs['excalibur']}")
     print("\n\n-----------------------------------------------------------\n\n")
 
+    if kwargs["excalibur"]:
+        local_dir = "/local/scratch-2/dhj26/ray_results"
+    elif kwargs["merlin"]:
+        local_dir = "/local/scratch/dhj26/ray_results"
+    else:
+        local_dir = "/rds/user/dhj26/hpc-work/ray_results"
+
     # Train policy!
     ray.tune.run(
         MultiPPOTrainer,
-        local_dir="/local/scratch-2/dhj26/ray_results" if kwargs["excalibur"] else "/rds/user/dhj26/hpc-work/ray_results",
+        local_dir=local_dir,
         name=f"PPO_{time.strftime('%Y%m%d-%H%M%S')}",
         stop={"training_iteration": kwargs["training_iterations"]},
         checkpoint_freq=1,
@@ -333,6 +340,7 @@ if __name__ == "__main__":
 
     # Optional
     parser.add_argument('--excalibur', action='store_true', default=False, help='Disable callbacks for compatibility on excalibur/HPC')
+    parser.add_argument('--merlin', action='store_true', default=False)
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
     parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='sgd minibatch size')
     parser.add_argument('--training_iterations', default=100, type=int, help='number of training iterations')
