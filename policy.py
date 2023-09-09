@@ -173,7 +173,7 @@ def env_creator(config: Dict):
     return env
 
 def setup_callbacks(**kwargs):
-    if kwargs["excalibur"] or kwargs["merlin"]:
+    if kwargs["excalibur"] or kwargs["merlin"] or kwargs["safe"]:
         callbacks = []
         if not kwargs["no_comms"]:
             # Log AE / PISA loss when they are being used
@@ -241,6 +241,8 @@ def policy(**kwargs):
         local_dir = "/local/scratch-2/dhj26/ray_results"
     elif kwargs["merlin"]:
         local_dir = "/local/scratch/dhj26/ray_results"
+    elif kwargs["home"]:
+        local_dir = "/home/dhj26/ray_results"
     else:
         local_dir = "/rds/user/dhj26/hpc-work/ray_results"
 
@@ -342,6 +344,8 @@ if __name__ == "__main__":
     # Optional
     parser.add_argument('--excalibur', action='store_true', default=False, help='Disable callbacks for compatibility on excalibur/HPC')
     parser.add_argument('--merlin', action='store_true', default=False)
+    parser.add_argument('--home', action='store_true', default=False)
+    parser.add_argument('--safe', action='store_true', default=False)
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
     parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='sgd minibatch size')
     parser.add_argument('--training_iterations', default=100, type=int, help='number of training iterations')
