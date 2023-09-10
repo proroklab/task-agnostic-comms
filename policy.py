@@ -242,7 +242,7 @@ def policy(**kwargs):
     elif kwargs["merlin"]:
         local_dir = "/local/scratch/dhj26/ray_results"
     elif kwargs["home"]:
-        local_dir = "/home/dhj26/ray_results"
+        local_dir = "~/ray_results"
     else:
         local_dir = "/rds/user/dhj26/hpc-work/ray_results"
 
