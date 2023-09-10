@@ -1,4 +1,9 @@
 SCENARIO_CONFIG = {
+    "norm_navigation": {
+        "num_agents": 4,
+        "reset_after": 2000,
+        "max_steps": 2000,
+    },
     "discovery": {
         "num_agents": 4,
         "reset_after": 2000,
