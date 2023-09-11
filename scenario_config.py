@@ -1,4 +1,14 @@
 SCENARIO_CONFIG = {
+    "norm_buzz_wire": {
+        "num_agents": 2,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
+    "norm_ball_trajectory": {
+        "num_agents": 2,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
     "norm_navigation": {
         "num_agents": 4,
         "reset_after": 2000,
