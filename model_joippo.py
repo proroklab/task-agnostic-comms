@@ -140,7 +140,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         logits, values = [], []
         for i in range(self.n_agents):
             input_features = torch.cat((
-                    x,
+                    torch.zeros_like(x) if self.no_comms else x,
                     agent_features[:, i],
                     torch.nn.functional.one_hot(
                         torch.tensor(i, device=x.device),
