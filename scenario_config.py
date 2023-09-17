@@ -34,6 +34,16 @@ SCENARIO_CONFIG = {
         "reset_after": 2000,
         "max_steps": 2000,
     },
+    "norm_flocking_clean": {
+        "num_agents": 4,
+        "reset_after": 2000,
+        "max_steps": 2000,
+    },
+    "old_flocking": {
+        "num_agents": 4,
+        "reset_after": 2000,
+        "max_steps": 2000,
+    },
     "discovery_single": {
         "num_agents": 4,
         "reset_after": 2000,
