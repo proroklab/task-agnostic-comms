@@ -33,6 +33,8 @@ class Scenario(BaseScenario):
         world = World(
             batch_dim,
             device,
+            x_semidim=1,
+            y_semidim=1,
             substeps=15 if self.joints else 5,
             joint_force=900 if self.joints else JOINT_FORCE,
             collision_force=1500 if self.joints else 400,
