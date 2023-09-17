@@ -25,7 +25,7 @@ class Scenario(BaseScenario):
         self.n_targets = kwargs.get("n_targets", 1)
         self._min_dist_between_entities = kwargs.get("min_dist_between_entities", 0.2)
         self._lidar_range = kwargs.get("lidar_range", 0.35)
-        self._covering_range = kwargs.get("covering_range", 0.35)
+        self._covering_range = kwargs.get("covering_range", 0.25)
         self._agents_per_target = kwargs.get("agents_per_target", 4)
         self.targets_respawn = kwargs.get("targets_respawn", True)
         self.shared_reward = kwargs.get("shared_reward", False)
@@ -91,34 +91,20 @@ class Scenario(BaseScenario):
 
         self._targets = []
         for i in range(self.n_targets):
-            target = Agent(
+            target = Landmark(
                 name=f"target_{i}",
                 collide=True,
-                movable=True,
+                movable=False,
                 shape=Sphere(radius=self.target_radius),
                 color=self.target_color,
-                action_script=self.action_script_creator(),
-                render_action=True,
             )
-            world.add_agent(target)
+            world.add_landmark(target)
             self._targets.append(target)
 
         self.covered_targets = torch.zeros(batch_dim, self.n_targets, device=device)
         self.shared_covering_rew = torch.zeros(batch_dim, device=device)
 
         return world
-    
-    def action_script_creator(self):
-        def action_script(agent, world):
-            t = self.t / 30
-
-            # if agent.state.pos[0][0].item() < -0.1:
-            agent.action.u = torch.stack([0.1 * torch.cos(0.1 * t), torch.zeros_like(t)], dim=1)
-            # agent.action.u = 0.3 * torch.stack([torch.cos(t), torch.sin(t)], dim=1)
-            # agent.action.v = torch.stack([torch.ones_like(t), torch.zeros_like(t)], dim=1)
-            # agent.state.vel = torch.stack([torch.ones_like(t), torch.zeros_like(t)], dim=1)
-
-        return action_script
 
     def reset_world_at(self, env_index: int = None):
         placable_entities = self._targets[: self.n_targets] + self.world.agents
@@ -138,18 +124,13 @@ class Scenario(BaseScenario):
         )
         for target in self._targets[self.n_targets :]:
             target.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
-        
-        if env_index is None:
-            self.t = torch.zeros(self.world.batch_dim, device=self.world.device)
-        else:
-            self.t[env_index] = 0
+
 
     def reward(self, agent: Agent):
         is_first = agent == self.world.agents[0]
         is_last = agent == self.world.agents[-1]
 
         if is_first:
-            self.t += 1
 
             self.time_rew = torch.full(
                 (self.world.batch_dim,), self.time_penalty, device=self.world.device
