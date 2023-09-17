@@ -1,4 +1,9 @@
 SCENARIO_CONFIG = {
+    "norm_dropout": {
+        "num_agents": 4,
+        "reset_after": 500,
+        "max_steps": 500,
+    },
     "norm_buzz_wire": {
         "num_agents": 2,
         "reset_after": 500,
