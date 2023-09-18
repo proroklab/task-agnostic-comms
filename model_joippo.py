@@ -15,7 +15,6 @@ from sae.model import AutoEncoder as PISA
 import torch
 from scenario_config import SCENARIO_CONFIG
 
-POLICY_WIDTH=256 # Try 256? Try 1024 for melting pot
 VALUE_WIDTH=256
 
 class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
@@ -38,6 +37,9 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         self.no_comms = kwargs["no_comms"]
         self.pisa_path = kwargs["pisa_path"]
         self.n_agents = SCENARIO_CONFIG[self.scenario]["num_agents"]
+
+        self.policy_width = kwargs["policy_width"]
+        self.value_width = max(self.policy_width, VALUE_WIDTH)
 
         obs_size = observation_space.shape[0] // self.n_agents
 
@@ -79,12 +81,12 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         self.policy_head = torch.nn.Sequential(
             torch.nn.Linear(
                 in_features=feature_dim,
-                out_features=POLICY_WIDTH
+                out_features=self.policy_width
             ),
             torch.nn.Tanh(),
             torch.nn.Linear(
-                in_features=POLICY_WIDTH,
-                out_features=POLICY_WIDTH,
+                in_features=self.policy_width,
+                out_features=self.policy_width,
             ),
             torch.nn.Tanh(),
         )
@@ -93,7 +95,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
                 torch.nn.init.normal_(layer.weight, mean=0.0, std=1.0)
                 torch.nn.init.normal_(layer.bias, mean=0.0, std=1.0)
         policy_last = torch.nn.Linear(
-                in_features=POLICY_WIDTH,
+                in_features=self.policy_width,
                 out_features=num_outputs // self.n_agents,  # Discrete: action_space[0].n
         )
         torch.nn.init.normal_(policy_last.weight, mean=0.0, std=0.01)

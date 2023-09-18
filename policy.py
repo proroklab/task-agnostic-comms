@@ -342,13 +342,14 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=None)
 
     # Optional
+    parser.add_argument('--policy_width', default=256, type=int, help='Policy network width')
     parser.add_argument('--excalibur', action='store_true', default=False, help='Disable callbacks for compatibility on excalibur/HPC')
     parser.add_argument('--merlin', action='store_true', default=False)
     parser.add_argument('--home', action='store_true', default=False)
     parser.add_argument('--safe', action='store_true', default=False)
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
     parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='sgd minibatch size')
-    parser.add_argument('--training_iterations', default=100, type=int, help='number of training iterations')
+    parser.add_argument('--training_iterations', default=500, type=int, help='number of training iterations')
     parser.add_argument('--rollout_fragment_length', default=125, type=int, help='Rollout fragment length')
     parser.add_argument('--eval_interval', default=10, type=int, help='Evaluation interval')
     parser.add_argument('--num_envs', default=32, type=int)
