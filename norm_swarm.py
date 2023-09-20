@@ -25,8 +25,8 @@ class Scenario(BaseScenario):
         self.n_targets = kwargs.get("n_targets", 1)
         self._min_dist_between_entities = kwargs.get("min_dist_between_entities", 0.2)
         self._lidar_range = kwargs.get("lidar_range", 0.35)
-        self._covering_range = kwargs.get("covering_range", 0.25)
-        self._agents_per_target = kwargs.get("agents_per_target", 4)
+        self._covering_range = kwargs.get("covering_range", 0.3)
+        self._agents_per_target = kwargs.get("agents_per_target", 2)
         self.targets_respawn = kwargs.get("targets_respawn", True)
         self.shared_reward = kwargs.get("shared_reward", False)
 

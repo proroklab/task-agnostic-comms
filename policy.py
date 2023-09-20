@@ -210,7 +210,7 @@ def policy(**kwargs):
     register_env(kwargs["scenario"], lambda config: env_creator(config))
 
     if Config.device == 'cuda':
-        num_gpus = 1  # Driver GPU
+        num_gpus = 0.5  # Driver GPU
         num_gpus_per_worker = 0  # VMAS will be on CPU
     else:
         num_gpus = 0
@@ -265,27 +265,27 @@ def policy(**kwargs):
             )
         ],
         config={
-            "seed": kwargs["seed"],
+            "seed": ray.tune.grid_search([0,1,2,3,4]), #kwargs["seed"],
             "framework": "torch",
             "env": kwargs["scenario"],
             "render_env": False,
-            "kl_coeff": 0.01,
-            "kl_target": 0.01,
-            "lambda": 0.9,
-            "clip_param": 0.2,
-            "vf_loss_coeff": 1,
-            "vf_clip_param": float("inf"),
-            "entropy_coeff": 0,
+            # "kl_coeff": 0.01,
+            # "kl_target": 0.01,
+            # "lambda": 0.9,
+            # "clip_param": 0.2,
+            # "vf_loss_coeff": 1,
+            # "vf_clip_param": float("inf"),
+            # "entropy_coeff": 0,
             "train_batch_size": kwargs["train_batch_size"],
             # Should remain close to max steps to avoid bias
             "rollout_fragment_length": kwargs["rollout_fragment_length"],
             "sgd_minibatch_size": kwargs["sgd_minibatch_size"],
-            "num_sgd_iter": 40,
+            # "num_sgd_iter": 40,
             "num_gpus": num_gpus,
             "num_workers": kwargs["num_workers"],
             "num_envs_per_worker": kwargs["num_envs"],
-            "lr": 5e-5,
-            "gamma": 0.99,
+            # "lr": 5e-5,
+            # "gamma": 0.99,
             "use_gae": True,
             "use_critic": True,
             "batch_mode": "truncate_episodes",
@@ -294,6 +294,7 @@ def policy(**kwargs):
                 "custom_action_dist": "hom_multi_action",
                 "custom_model_config": {
                     **kwargs,
+                    "policy_width": 512,#ray.tune.grid_search([64, 128, 512, 1024]),
                     "pisa_path": os.path.abspath(kwargs["pisa_path"]) if kwargs["pisa_path"] is not None else kwargs["pisa_path"],
                     "wandb_grouping": f"{kwargs['scenario']}+{mode}",
                 },
