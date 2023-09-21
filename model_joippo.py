@@ -37,11 +37,15 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         self.no_comms = kwargs["no_comms"]
         self.pisa_path = kwargs["pisa_path"]
         self.n_agents = SCENARIO_CONFIG[self.scenario]["num_agents"]
+        self.scaling_agents = kwargs["scaling_agents"]
+
+        if self.scaling_agents is None:
+            self.scaling_agents = self.n_agents
 
         self.policy_width = kwargs["policy_width"]
         self.value_width = max(self.policy_width, VALUE_WIDTH)
 
-        obs_size = observation_space.shape[0] // self.n_agents
+        self.obs_size = observation_space.shape[0] // self.scaling_agents
 
         if self.task_agnostic or self.task_specific:
 
@@ -76,7 +80,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
             ).to(device)
 
         # Perm-invariant state + own state + one-hot vector
-        feature_dim = obs_size * self.n_agents + obs_size + self.n_agents
+        feature_dim = self.obs_size * self.n_agents + self.obs_size + self.scaling_agents
 
         self.policy_head = torch.nn.Sequential(
             torch.nn.Linear(
@@ -96,7 +100,7 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
                 torch.nn.init.normal_(layer.bias, mean=0.0, std=1.0)
         policy_last = torch.nn.Linear(
                 in_features=self.policy_width,
-                out_features=num_outputs // self.n_agents,  # Discrete: action_space[0].n
+                out_features=num_outputs // self.scaling_agents,  # Discrete: action_space[0].n
         )
         torch.nn.init.normal_(policy_last.weight, mean=0.0, std=0.01)
         torch.nn.init.normal_(policy_last.bias, mean=0.0, std=0.01)
@@ -137,16 +141,18 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         if not self.no_comms:
             x = self.pisa.encoder(x, batch, n_batches=n_batches)
         else:
-            x = x.reshape(n_batches, -1) # [batches, agents * obs_size]
+            x = torch.zeros(n_batches, self.n_agents * self.obs_size, device=x.device)
+            # x = x.reshape(n_batches, -1) # [batches, agents * obs_size]
 
         logits, values = [], []
-        for i in range(self.n_agents):
+        for i in range(self.scaling_agents):
             input_features = torch.cat((
-                    torch.zeros_like(x) if self.no_comms else x,
+                    x,
+                    # torch.zeros_like(x) if self.no_comms else x,
                     agent_features[:, i],
                     torch.nn.functional.one_hot(
                         torch.tensor(i, device=x.device),
-                        self.n_agents,
+                        self.scaling_agents,
                     ).repeat(n_batches, 1)
                 ), dim=1)
             values.append(
@@ -169,10 +175,10 @@ class PolicyJOIPPO(TorchModelV2, torch.nn.Module):
         observation /= 5.0
 
         n_batches = observation.shape[0]
-        observation = observation.reshape(n_batches, self.n_agents, -1)  # [batches, agents, obs_size]
+        observation = observation.reshape(n_batches, self.scaling_agents, -1)  # [batches, agents, obs_size]
         agent_features = observation.clone()
 
         observation = torch.flatten(observation, start_dim=0, end_dim=1)  # [batches * agents, obs_size]
-        batch = torch.arange(n_batches, device=observation.device).repeat_interleave(self.n_agents)
+        batch = torch.arange(n_batches, device=observation.device).repeat_interleave(self.scaling_agents)
 
         return observation, batch, agent_features, n_batches

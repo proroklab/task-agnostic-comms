@@ -307,7 +307,7 @@ def policy(**kwargs):
                 "share_reward": True,
                 # Scenario specific variables
                 "scenario_config": {
-                    "n_agents": SCENARIO_CONFIG[kwargs["scenario"]]["num_agents"],
+                    "n_agents": SCENARIO_CONFIG[kwargs["scenario"]]["num_agents"] if kwargs["scaling_agents"] is None else kwargs["scaling_agents"],
                 },
             },
             "evaluation_interval": kwargs["eval_interval"],
@@ -342,6 +342,7 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=None)
 
     # Optional
+    parser.add_argument('--scaling_agents', default=None, type=int, help='Use a different number of agents to the default for scaling')
     parser.add_argument('--policy_width', default=256, type=int, help='Policy network width')
     parser.add_argument('--excalibur', action='store_true', default=False, help='Disable callbacks for compatibility on excalibur/HPC')
     parser.add_argument('--merlin', action='store_true', default=False)
