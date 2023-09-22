@@ -73,9 +73,9 @@ def train(
     set_size = SCENARIO_CONFIG[scenario_name]["num_agents"]
 
     # Load and process data
-    data1 = _load_data("samples/flocking1.pt", scenario_name, time_str, use_proj, no_stand)
-    data2 = _load_data("samples/flocking2.pt", scenario_name, time_str, use_proj, no_stand)
-    data3 = _load_data("samples/flocking3.pt", scenario_name, time_str, use_proj, no_stand)
+    data1 = _load_data("samples/norm_discovery_1.pt", scenario_name, time_str, use_proj, no_stand)
+    data2 = _load_data("samples/norm_discovery_2.pt", scenario_name, time_str, use_proj, no_stand)
+    data3 = _load_data("samples/norm_discovery_3.pt", scenario_name, time_str, use_proj, no_stand)
 
     data_list = []
     size_list = []
@@ -130,7 +130,7 @@ def train(
         }
     )
 
-    for episodes in range(3):
+    for episodes in range(999999):
         for epoch in range(epochs):
 
             optimizer.zero_grad()
@@ -193,7 +193,8 @@ def train(
                     if epoch % 2000 == 0 and epoch != 0:
                         time_str = time.strftime("%Y%m%d-%H%M%S")
                         file_str = f"weights/{model_type}_{scenario_name}_{epoch}_{time_str}.pt"
-                        torch.save(autoencoder, file_str)
+                        torch.save(autoencoder.state_dict(), file_str)
+                        torch.save(autoencoder.state_dict(), f"weights/{model_type}_{scenario_name}_scaling_latest.pt")
 
                 wandb.log({
                               "train_loss": train_loss_vars["loss"],

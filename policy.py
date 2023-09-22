@@ -137,10 +137,10 @@ class ReconstructionLossCallbacks(DefaultCallbacks):
 
         n_batches = obs.shape[0]
 
-        obs = obs.reshape(n_batches, pi.model.n_agents, -1)
+        obs = obs.reshape(n_batches, pi.model.scaling_agents, -1)
 
         obs = torch.flatten(obs, start_dim=0, end_dim=1)  # [batches * agents, obs_size]
-        batch = torch.arange(n_batches, device=obs.device).repeat_interleave(pi.model.n_agents)
+        batch = torch.arange(n_batches, device=obs.device).repeat_interleave(pi.model.scaling_agents)
 
         sae = pi.model.pisa
         sae(obs, batch=batch)
