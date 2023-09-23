@@ -31,8 +31,8 @@ SCENARIO_CONFIG = {
     },
     "norm_sampling": {
         "num_agents": 4,
-        "reset_after": 2000,
-        "max_steps": 2000,
+        "reset_after": 500,
+        "max_steps": 500,
     },
     "norm_swarm": {
         "num_agents": 4,

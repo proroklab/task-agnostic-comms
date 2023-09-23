@@ -60,6 +60,13 @@ def sample(
         n_agents=num_agents,
     )
 
+    from torchvision.utils import save_image
+    scrn = env.render(mode="rgb_array")
+    scrn = torch.tensor(scrn.copy()).float() / 255.0
+    save_image(scrn.permute(2, 0, 1), f"{scenario_name}.png")
+    exit()
+
+
     obs_size = env.observation_space[0].shape[0]
     if not continuous:
         num_actions = env.action_space[0].n - 1
@@ -94,7 +101,6 @@ def sample(
                 prev_act[i] = act
 
             obs, _, dones, _ = env.step(actions)
-
             agent_observations[s] = torch.stack(obs)
 
             # Reset environments that are done
