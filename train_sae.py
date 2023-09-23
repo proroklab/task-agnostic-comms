@@ -79,8 +79,8 @@ def train(
 
     import wandb
     run = wandb.init(
-        project="acs-project",
-        entity="dhjayalath",
+        project=Config.WANDB_PROJECT,
+        entity=Config.WANDB_ENTITY,
         name="train_sae",
         sync_tensorboard=True,
         config={

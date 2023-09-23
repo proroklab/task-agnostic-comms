@@ -10,6 +10,8 @@ Start by cloning the repository and submodules, then enter the top-level directo
 
 `git clone --recurse-submodules <>.git && cd marl-comms-optimisation`
 
+Set `WANDB_ENTITY` and `WANDB_PROJECT` for `wandb` logging in `config.py`
+
 Each MARL suite requires its own setup. Use the relevant virtual environment for running the associated experiments.
 
 ### Melting Pot Setup

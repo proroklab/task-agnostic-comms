@@ -26,7 +26,6 @@ from config import Config
 import time
 import torch
 
-
 class EvaluationCallbacks(DefaultCallbacks):
     def on_episode_step(
             self,
@@ -237,14 +236,8 @@ def policy(**kwargs):
     print(f"merlin = {kwargs['merlin']}")
     print("\n\n-----------------------------------------------------------\n\n")
 
-    if kwargs["excalibur"]:
-        local_dir = "/local/scratch-2/dhj26/ray_results"
-    elif kwargs["merlin"]:
-        local_dir = "/local/scratch/dhj26/ray_results"
-    elif kwargs["home"]:
+    if kwargs["home"]:
         local_dir = "~/ray_results"
-    else:
-        local_dir = "/rds/user/dhj26/hpc-work/ray_results"
 
     config = {
         "seed": kwargs["seed"],
@@ -326,16 +319,15 @@ def policy(**kwargs):
         checkpoint_score_attr="episode_reward_mean",
         callbacks=[
             WandbLoggerCallback(
-                project=f"task-agnostic-comms",
+                project=Config.WANDB_PROJECT,
                 name=f"{kwargs['scenario']}+{mode}+{kwargs['seed']}",
-                entity="dhjayalath",
+                entity=Config.WANDB_ENTITY,
                 api_key="",
             )
         ],
         config=config,
     )
     wandb.finish()
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Train policy with SAE')
