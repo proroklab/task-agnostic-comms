@@ -246,6 +246,74 @@ def policy(**kwargs):
     else:
         local_dir = "/rds/user/dhj26/hpc-work/ray_results"
 
+    config = {
+        "seed": kwargs["seed"],
+        "framework": "torch",
+        "env": kwargs["scenario"],
+        "render_env": False,
+        "train_batch_size": kwargs["train_batch_size"],
+        "rollout_fragment_length": kwargs["rollout_fragment_length"],
+        "sgd_minibatch_size": kwargs["sgd_minibatch_size"],
+        "num_gpus": num_gpus,
+        "num_workers": kwargs["num_workers"],
+        "num_envs_per_worker": kwargs["num_envs"],
+        "use_gae": True,
+        "use_critic": True,
+        "batch_mode": "truncate_episodes",
+        "model": {
+            "custom_model": "policy_net",
+            "custom_action_dist": "hom_multi_action",
+            "custom_model_config": {
+                **kwargs,
+                "pisa_path": os.path.abspath(kwargs["pisa_path"]) if kwargs["pisa_path"] is not None else kwargs["pisa_path"],
+                "wandb_grouping": f"{kwargs['scenario']}+{mode}",
+            },
+        },
+        "env_config": {
+            "device": "cpu",
+            "num_envs": kwargs["num_envs"],
+            "scenario_name": kwargs["scenario"],
+            "continuous_actions": False,
+            "max_steps": kwargs["max_steps"],
+            "share_reward": True,
+            # Scenario specific variables
+            "scenario_config": {
+                "n_agents": SCENARIO_CONFIG[kwargs["scenario"]]["num_agents"] if kwargs["scaling_agents"] is None else kwargs["scaling_agents"],
+            },
+        },
+        "evaluation_interval": kwargs["eval_interval"],
+        "evaluation_duration": 1,
+        "evaluation_num_workers": 1,
+        "evaluation_parallel_to_training": True,
+        "evaluation_config": {
+            "num_envs_per_worker": 1,
+            "env_config": {
+                "num_envs": 1,
+            },
+            "callbacks": MultiCallbacks(callbacks),
+        },
+    }
+
+    if not kwargs["no_hparams"]:
+        hparams = {
+            "kl_coeff": 0.01,
+            "kl_target": 0.01,
+            "lambda": 0.9,
+            "clip_param": 0.2,
+            "vf_loss_coeff": 1,
+            "vf_clip_param": float("inf"),
+            "entropy_coeff": 0,
+            "num_sgd_iter": 40,
+            "lr": 5e-5,
+            "gamma": 0.99,
+        }
+        config = {
+            **config,
+            **hparams,
+        }
+
+    print(config)
+
     # Train policy!
     ray.tune.run(
         MultiPPOTrainer,
@@ -264,64 +332,7 @@ def policy(**kwargs):
                 api_key="",
             )
         ],
-        config={
-            "seed": kwargs["seed"],
-            "framework": "torch",
-            "env": kwargs["scenario"],
-            "render_env": False,
-            "kl_coeff": 0.01,
-            "kl_target": 0.01,
-            "lambda": 0.9,
-            "clip_param": 0.2,
-            "vf_loss_coeff": 1,
-            "vf_clip_param": float("inf"),
-            "entropy_coeff": 0,
-            "train_batch_size": kwargs["train_batch_size"],
-            # Should remain close to max steps to avoid bias
-            "rollout_fragment_length": kwargs["rollout_fragment_length"],
-            "sgd_minibatch_size": kwargs["sgd_minibatch_size"],
-            "num_sgd_iter": 40,
-            "num_gpus": num_gpus,
-            "num_workers": kwargs["num_workers"],
-            "num_envs_per_worker": kwargs["num_envs"],
-            "lr": 5e-5,
-            "gamma": 0.99,
-            "use_gae": True,
-            "use_critic": True,
-            "batch_mode": "truncate_episodes",
-            "model": {
-                "custom_model": "policy_net",
-                "custom_action_dist": "hom_multi_action",
-                "custom_model_config": {
-                    **kwargs,
-                    "pisa_path": os.path.abspath(kwargs["pisa_path"]) if kwargs["pisa_path"] is not None else kwargs["pisa_path"],
-                    "wandb_grouping": f"{kwargs['scenario']}+{mode}",
-                },
-            },
-            "env_config": {
-                "device": "cpu",
-                "num_envs": kwargs["num_envs"],
-                "scenario_name": kwargs["scenario"],
-                "continuous_actions": False,
-                "max_steps": kwargs["max_steps"],
-                "share_reward": True,
-                # Scenario specific variables
-                "scenario_config": {
-                    "n_agents": SCENARIO_CONFIG[kwargs["scenario"]]["num_agents"] if kwargs["scaling_agents"] is None else kwargs["scaling_agents"],
-                },
-            },
-            "evaluation_interval": kwargs["eval_interval"],
-            "evaluation_duration": 1,
-            "evaluation_num_workers": 1,
-            "evaluation_parallel_to_training": True,
-            "evaluation_config": {
-                "num_envs_per_worker": 1,
-                "env_config": {
-                    "num_envs": 1,
-                },
-                "callbacks": MultiCallbacks(callbacks),
-            },
-        },
+        config=config,
     )
     wandb.finish()
 
@@ -342,6 +353,7 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=None)
 
     # Optional
+    parser.add_argument('--no_hparams', action='store_true', default=False, help='Do not use tuned hyperparameters')
     parser.add_argument('--scaling_agents', default=None, type=int, help='Use a different number of agents to the default for scaling')
     parser.add_argument('--policy_width', default=256, type=int, help='Policy network width')
     parser.add_argument('--excalibur', action='store_true', default=False, help='Disable callbacks for compatibility on excalibur/HPC')
