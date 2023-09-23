@@ -14,20 +14,6 @@ Set `WANDB_ENTITY` and `WANDB_PROJECT` for `wandb` logging in `config.py`
 
 Each MARL suite requires its own setup. Use the relevant virtual environment for running the associated experiments.
 
-### Melting Pot Setup
-1. Change directory to the Melting Pot folder
-    
-    `cd meltingpot-marlcomms`
-2. Create a new virtual environment
-    
-    `python -m venv mp_env && source mp_venv/bin/activate`
-3. Install dependencies
-    
-    `pip install -r requirements_mp.txt`
-4. Create directories to store weights and samples
-    
-    `mkdir weights && mkdir samples`
-
 ## Running VMAS Experiments
 
 ### VMAS Setup
@@ -88,65 +74,66 @@ Task-specific:
 Note: If you wish to train a policy with a different number of agents than the default (e.g. to test out-of-distribution performance of comms strategies), then specify `--scaling_agents <>` with the number of agents you wish to use.
 
 ## Running Melting Pot Experiments
+The instruction for this section are very similar to running the VMAS experiments above.
 
-## VMAS Instructions
-### Setup
-Clone this repository and follow the steps below.
-```bash
-# 1. Create a Python 3.9+ virtual environment
-virtualenv env && source env/bin/activate && pip install --upgrade pip
+### Melting Pot Setup
+1. Change directory to the Melting Pot folder
+    
+    `cd meltingpot-marlcomms`
+2. Create a new virtual environment
+    
+    `python -m venv mp_env && source mp_venv/bin/activate`
+3. Install dependencies
+    
+    `pip install -r requirements_mp.txt && pip install -e .`
+4. Create directories to store weights and samples
+    
+    `mkdir weights && mkdir samples`
 
-# 2. Install required packages
-pip install ray[rllib]==2.1.0 torch torchvision numpy==1.23.5 moviepy imageio wandb git+https://github.com/proroklab/VectorizedMultiAgentSimulator.git && pip uninstall grpcio && pip install grpcio==1.32.0
+### Collecting pre-training data
 
-# 3. Create directory to store weights and samples and log in to wandb 
-mkdir weights && mkdir samples && wandb login
-```
+Uniformly randomly sample 1M observations from the observation space of Discovery or Swarm.
 
-### Collecting samples
-The following command will sample observations randomly from the scenario and save them to a file under `samples/*.pt`.
-```bash
-python sample_vmas.py -c <scenario name> --steps 100000 -d cpu --continuous
-```
+`python sample_meltingpot.py --scenario <task> --steps 1000000`
 
-### Pre-training the set autoencoder
-This command will load the sampled observations from disk and pre-train a set autoencoder using them. The weights for
-the pre-trained autoencoder will be saved to `weights/*.pt`
-```bash
-python train_sae.py -c <scenario name> --data <path to samples> --latent <latent dimension> -d <device>
-```
+The results will be saved to `samples/<task>_<time>.pt`
 
-### Training the policy
-Edit and execute either `train_flocking.sh` or `train_discovery.sh`.
+### Training the image encoder
 
-## Melting Pot Instructions
+`python train_cnn.py --scenario <task> --data_path samples/<task>_<time>.pt --image_width <>`
 
-### Setup
-```bash
-# 1. Create a Python 3.9+ virtual environment
-cd meltingpot-marlcomms && virtualenv -p /usr/bin/python3.9 mp_venv && source mp_venv/bin/activate && pip install --upgrade pip
+Weights will be saved periodically to `weights/cnn_<task>_best.pt`.
 
-# 2. Install required packages (if there are issues installing Melting Pot, do so manually following their instructions)
-pip install https://github.com/deepmind/lab2d/releases/download/release_candidate_2022-03-24/dmlab2d-1.0-cp39-cp39-manylinux_2_31_x86_64.whl && pip install -e . && pip install "ray[rllib]"==2.3.1 wandb imageio moviepy torch torchvision gym
+### Training a task-agnostic comms strategy offline
 
-# 3. Create required directories and log in to wandb
-mkdir weights && mkdir samples && wandb login
-```
+Note: `--latent` is the expected latent dimension of the set autoencoder. To reproduce our work, this should be equal `agent observation dim * no. of agents`.
 
-### Collecting samples
-Sampled pixel data will be saved into `samples/<subsrate>/<set>/*.png`
-```bash
-python sample_meltingpot.py -c <substrate name> --steps 100000 -d <device>
-```
+`python train_pisa.py --scenario <task> --data_path samples/<task>_<time>.pt --cnn_path weights/cnn_<task>_best.pt`
 
-### Pre-training the pixel set autoencoder
-```bash
-# 1. Train the convolutional autoencoder (saves state dict. to weights/*.pt)
-python train_cnn.py --scenario <substrate name> --data_path <path to samples> --image_width <88 or 40> --latent_dim <latent dim> --device <device>
+Weights will be saved periodically to `weights/pisa_<task>_best.pt`
 
-# 2. Train the set autoencoder (saves state dict. to weights/*.pt)
-python train_pisa.py --scenario <substrate name> --data_path <path to samples> --cnn_path <path to Conv. AE state dict.> --image_width <88 or 40> --data_dim <latent dim of Conv. AE> --device <device>
-```
+### Training a task-specific comms strategy on-policy
+Note: `--pisa_dim <>` is the dimension of each individual agent observation expected by the set autoencoder.
 
-### Training the policy
-Edit and execute any of the `train_<substrate>.sh` scripts.
+`python policy_mp.py --train_specific --scenario <task> --cnn_path weights/cnn_<task>_best.pt --pisa_dim <> --seed <>`
+
+As this policy trains, the learned task-specific communication strategy will be saved to `weights/pisa_policy_wk<worker_index>_<time>.pt` every `eval_interval` steps.
+
+### Testing comms strategies on-policy
+
+Training stats should be saved to `~/ray_results` where they can be viewed with `tensorboard --logdir ~/ray_results`
+
+No-comms:
+
+`python policy_mp.py --no_comms --scenario <task> --cnn_path weights/cnn_<task>_best.pt --pisa_dim <> --seed <>`
+
+Task-agnostic:
+
+`python policy_mp.py --task_agnostic --scenario <task> --cnn_path weights/cnn_<task>_best.pt --pisa_dim <> --pisa_path weights/pisa_<task>_best.pt --seed <>`
+
+Task-specific:
+
+`python policy_mp.py --task_specific --scenario <task> --cnn_path weights/cnn_<task>_best.pt --pisa_dim <> --pisa_path weights/pisa_policy_wk<worker_index>_<time>.pt --seed <>`
+
+## Troubleshooting
+If you have problems installing `dmlab2d`, please see instructions at https://github.com/google-deepmind/lab2d to build it from source.
