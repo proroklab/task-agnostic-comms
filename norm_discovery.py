@@ -18,10 +18,11 @@ from vmas.simulator.utils import Color, X, Y, ScenarioUtils
 if typing.TYPE_CHECKING:
     from vmas.simulator.rendering import Geom
 
+TARGET_DENSITY = 4
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
-        self.n_agents = kwargs.get("n_agents", 5)
+        self.n_agents = kwargs.get("n_agents", 4)
         self.n_targets = kwargs.get("n_targets", 7)
         self._min_dist_between_entities = kwargs.get("min_dist_between_entities", 0.2)
         self._lidar_range = kwargs.get("lidar_range", 0.35)
@@ -42,12 +43,16 @@ class Scenario(BaseScenario):
         self.viewer_zoom = 1
         self.target_color = Color.GREEN
 
+        # Target density (agents / m^2) = 4 a / m^2
+        target_area = self.n_agents / TARGET_DENSITY
+        world_semidim = target_area ** 0.5
+
         # Make world
         world = World(
             batch_dim,
             device,
-            x_semidim=1,
-            y_semidim=1,
+            x_semidim=world_semidim,
+            y_semidim=world_semidim,
             collision_force=500,
             substeps=2,
             drag=0.25,
