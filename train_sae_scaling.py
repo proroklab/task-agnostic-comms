@@ -61,7 +61,7 @@ def _train_test_split(data, train_proportion, test_lim):
 
 def train(
         scenario_name,
-        data_file,
+        data_files,
         model_type,
         use_proj,
         no_stand,
@@ -73,9 +73,9 @@ def train(
     set_size = SCENARIO_CONFIG[scenario_name]["num_agents"]
 
     # Load and process data
-    data1 = _load_data("samples/flocking1.pt", scenario_name, time_str, use_proj, no_stand)
-    data2 = _load_data("samples/flocking2.pt", scenario_name, time_str, use_proj, no_stand)
-    data3 = _load_data("samples/flocking3.pt", scenario_name, time_str, use_proj, no_stand)
+    data1 = _load_data(data_files[0], scenario_name, time_str, use_proj, no_stand)
+    data2 = _load_data(data_files[1], scenario_name, time_str, use_proj, no_stand)
+    data3 = _load_data(data_files[2], scenario_name, time_str, use_proj, no_stand)
 
     data_list = []
     size_list = []
@@ -119,8 +119,8 @@ def train(
 
     import wandb
     run = wandb.init(
-        project="acs-project",
-        entity="dhjayalath",
+        project=Config.WANDB_PROJECT,
+        entity=Config.WANDB_ENTITY,
         name="train_sae",
         sync_tensorboard=True,
         config={
@@ -130,7 +130,7 @@ def train(
         }
     )
 
-    for episodes in range(3):
+    for episodes in range(999999):
         for epoch in range(epochs):
 
             optimizer.zero_grad()
@@ -193,7 +193,8 @@ def train(
                     if epoch % 2000 == 0 and epoch != 0:
                         time_str = time.strftime("%Y%m%d-%H%M%S")
                         file_str = f"weights/{model_type}_{scenario_name}_{epoch}_{time_str}.pt"
-                        torch.save(autoencoder, file_str)
+                        torch.save(autoencoder.state_dict(), file_str)
+                        torch.save(autoencoder.state_dict(), f"weights/{model_type}_{scenario_name}_scaling_latest.pt")
 
                 wandb.log({
                               "train_loss": train_loss_vars["loss"],
@@ -231,7 +232,7 @@ if __name__ == "__main__":
     # Parse autoencoder training arguments
     parser = argparse.ArgumentParser(prog='Train SAE on sampled data')
     parser.add_argument('--latent', default=16, type=int, help='latent dimension of set autoencoder to use')
-    parser.add_argument('--data', help='file to load for training data (sampled observations)')
+    parser.add_argument('--data', nargs="+", help='files to load for training data (sampled observations)')
     parser.add_argument('--ae_type', default='sae', help='select autoencoder type: sae/mlp')
     parser.add_argument('--use_proj', action='store_true', default=False,
                         help='project observations into high-dimensional space')

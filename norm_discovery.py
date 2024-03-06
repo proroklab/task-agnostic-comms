@@ -78,7 +78,7 @@ class Scenario(BaseScenario):
                     # ),
                     Lidar(
                         world,
-                        n_rays=15,
+                        n_rays=12,
                         max_range=self._lidar_range,
                         entity_filter=entity_filter_targets,
                         render_color=Color.GREEN,
@@ -128,7 +128,6 @@ class Scenario(BaseScenario):
     def reward(self, agent: Agent):
         is_first = agent == self.world.agents[0]
         is_last = agent == self.world.agents[-1]
-        agent_index = self.world.agents.index(agent)
 
         if is_first:
             self.time_rew = torch.full(
@@ -226,7 +225,7 @@ class Scenario(BaseScenario):
             [
                 agent.state.pos,
                 agent.state.vel,
-                agent.state.pos,
+                torch.zeros_like(agent.state.pos),
                 lidar_1_measures,
                 # lidar_2_measures,
             ],

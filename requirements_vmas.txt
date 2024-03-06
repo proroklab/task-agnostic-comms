@@ -1,0 +1,8 @@
+vmas==1.2.10
+"ray[rllib]"==2.1.0
+torch
+torchvision
+numpy==1.23.5
+moviepy
+imageio
+wandb

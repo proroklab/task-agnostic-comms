@@ -8,9 +8,6 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.typing import PolicyID, AgentID
 
-from model_ippo import PolicyIPPO
-from model_cppo import PolicyCPPO
-from model_hetippo import PolicyHetIPPO
 from model_joippo import PolicyJOIPPO
 
 from multi_action_dist import TorchHomogeneousMultiActionDistribution
@@ -28,7 +25,6 @@ from config import Config
 
 import time
 import torch
-
 
 class EvaluationCallbacks(DefaultCallbacks):
     def on_episode_step(
@@ -110,7 +106,7 @@ class SAECheckpointCallbacks(DefaultCallbacks):
     ) -> None:
         if worker.worker_index == 1:
             time_str = time.strftime("%Y%m%d-%H%M%S")
-            sae = policies["default_policy"].model.autoencoder
+            sae = policies["default_policy"].model.pisa
             file_str = f"weights/sae_policy_wk{worker.worker_index}_{time_str}.pt"
             torch.save(sae, file_str)
             print(f"Saved SAE trained with policy losses to {file_str}")
@@ -134,23 +130,18 @@ class ReconstructionLossCallbacks(DefaultCallbacks):
     ) -> None:
         pi = policies["default_policy"]
         obs = torch.tensor(postprocessed_batch["obs"]).clone()
+
+        # Standardise
+        obs /= 5.0
+
         n_batches = obs.shape[0]
 
-        obs = obs.reshape(n_batches, pi.model.n_agents, -1)
-
-        if pi.model.use_proj is True:
-            obs = obs @ pi.model.proj
-
-        if pi.model.no_stand is False:
-            obs = (obs - pi.model.data_mean) / pi.model.data_std
-            obs = torch.nan_to_num(
-                obs, nan=0.0, posinf=0.0, neginf=0.0
-            )  # Replace NaNs introduced by zero-division with zero
+        obs = obs.reshape(n_batches, pi.model.scaling_agents, -1)
 
         obs = torch.flatten(obs, start_dim=0, end_dim=1)  # [batches * agents, obs_size]
-        batch = torch.arange(n_batches, device=obs.device).repeat_interleave(pi.model.n_agents)
+        batch = torch.arange(n_batches, device=obs.device).repeat_interleave(pi.model.scaling_agents)
 
-        sae = pi.model.autoencoder
+        sae = pi.model.pisa
         sae(obs, batch=batch)
         losses = sae.loss()
         sae_loss = losses["loss"]
@@ -180,71 +171,42 @@ def env_creator(config: Dict):
     )
     return env
 
-
-def policy(
-        scenario_name,
-        model,
-        encoder,
-        encoding_dim,
-        encoder_file,
-        encoder_loss,
-        use_proj,
-        no_stand,
-        train_batch_size,
-        sgd_minibatch_size,
-        max_steps,
-        training_iterations,
-        num_workers,
-        num_envs,
-        num_cpus_per_worker,
-        seed,
-        render_env,
-        wandb_name,
-        no_render_eval_callbacks,
-        vmas_device="cpu",
-):
-    num_envs_per_worker = num_envs
-    rollout_fragment_length = 125
-
-    if model == 'ippo':
-        ModelCatalog.register_custom_model("policy_net", PolicyIPPO)
-    elif model == 'cppo':
-        ModelCatalog.register_custom_model("policy_net", PolicyCPPO)
-    elif model == 'hetippo':
-        ModelCatalog.register_custom_model("policy_net", PolicyHetIPPO)
-    elif model == 'joippo':
-        ModelCatalog.register_custom_model("policy_net", PolicyJOIPPO)
+def setup_callbacks(**kwargs):
+    if kwargs["excalibur"] or kwargs["merlin"] or kwargs["safe"]:
+        callbacks = []
+        if not kwargs["no_comms"]:
+            # Log AE / PISA loss when they are being used
+            callbacks.insert(0, ReconstructionLossCallbacks)
+        if kwargs["train_specific"]:
+            # Checkpoint PISA when trained with policy loss
+            callbacks.insert(0, SAECheckpointCallbacks)
+        return callbacks
     else:
-        raise AssertionError
+        callbacks = [RenderingCallbacks]
+        if not kwargs["no_comms"]:
+            # Log AE / PISA loss when they are being used
+            callbacks.insert(0, ReconstructionLossCallbacks)
+        if kwargs["train_specific"]:
+            # Checkpoint PISA when trained with policy loss
+            callbacks.insert(0, SAECheckpointCallbacks)
+        return callbacks
 
+def policy(**kwargs):
+
+    ModelCatalog.register_custom_model("policy_net", PolicyJOIPPO)
     ModelCatalog.register_custom_action_dist(
         "hom_multi_action", TorchHomogeneousMultiActionDistribution
     )
-
-    if no_render_eval_callbacks is True:
-        callbacks = []
-    else:
-        callbacks = [RenderingCallbacks, EvaluationCallbacks]
-
-    if model == "joippo" and encoder is not None:
-        callbacks.insert(0, ReconstructionLossCallbacks)
-    if encoder_loss == 'policy':
-        callbacks.insert(0, SAECheckpointCallbacks)
+    callbacks = setup_callbacks(**kwargs)
 
     if not ray.is_initialized():
-        ray.init()
-        print("Ray init!")
+        if kwargs["excalibur"] or kwargs["merlin"]:
+            ray.init(address="auto")
+        else:
+            ray.init()
+        print("ray intialised.")
 
-    if "pursuit" in scenario_name:
-        from pettingzoo.sisl import pursuit_v4
-        from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
-        pz_env_creator = lambda config: pursuit_v4.env(
-            max_cycles=500, x_size=16, y_size=16, shared_reward=True, n_evaders=30,
-            n_pursuers=8, obs_range=7, n_catch=2, freeze_evaders=False, tag_reward=0.01,
-            catch_reward=5.0, urgency_reward=-0.1, surround=True, constraint_window=1.0)
-        register_env(scenario_name, lambda config: ParallelPettingZooEnv(pz_env_creator(config)))
-    else:
-        register_env(scenario_name, lambda config: env_creator(config))
+    register_env(kwargs["scenario"], lambda config: env_creator(config))
 
     if Config.device == 'cuda':
         num_gpus = 1  # Driver GPU
@@ -253,151 +215,164 @@ def policy(
         num_gpus = 0
         num_gpus_per_worker = 0
 
-    print("VMAS Device", vmas_device, "rllib GPUs", num_gpus, "rllib GPUs/worker", num_gpus_per_worker)
+    # Determine mode
+    if kwargs["task_agnostic"]:
+        mode = "task_agnostic"
+    elif kwargs["task_specific"]:
+        mode = "task_specific"
+    elif kwargs["train_specific"]:
+        mode = "train_specific"
+    else:
+        mode = "no_comms"
 
-    # Train policy!
-    ray.tune.run(
-        MultiPPOTrainer,
-        stop={"training_iteration": training_iterations},
-        checkpoint_freq=1,
-        keep_checkpoints_num=2,
-        checkpoint_at_end=True,
-        checkpoint_score_attr="episode_reward_mean",
-        callbacks=[
-            WandbLoggerCallback(
-                project=f"acs_project",
-                name=f"{wandb_name}-seed-{seed}",
-                entity="dhjayalath",
-                api_key="",
-            )
-        ],
-        config={
-            "seed": seed,
-            "framework": "torch",
-            "env": scenario_name,
-            "render_env": render_env,
+    print("\n\n-----------------------------------------------------------\n\n")
+    print(f"experiment type = {mode}")
+    print(f"device = {Config.device}")
+    print(f"scenario = {kwargs['scenario']}")
+    print(f"seed = {kwargs['seed']}")
+    print(f"pisa path = {kwargs['pisa_path']}")
+    print(f"pisa latent dim = {kwargs['pisa_dim']}")
+    print(f"excalibur = {kwargs['excalibur']}")
+    print(f"merlin = {kwargs['merlin']}")
+    print("\n\n-----------------------------------------------------------\n\n")
+
+    if kwargs["home"]:
+        local_dir = "~/ray_results"
+
+    config = {
+        "seed": kwargs["seed"],
+        "framework": "torch",
+        "env": kwargs["scenario"],
+        "render_env": False,
+        "train_batch_size": kwargs["train_batch_size"],
+        "rollout_fragment_length": kwargs["rollout_fragment_length"],
+        "sgd_minibatch_size": kwargs["sgd_minibatch_size"],
+        "num_gpus": num_gpus,
+        "num_workers": kwargs["num_workers"],
+        "num_envs_per_worker": kwargs["num_envs"],
+        "use_gae": True,
+        "use_critic": True,
+        "batch_mode": "truncate_episodes",
+        "model": {
+            "custom_model": "policy_net",
+            "custom_action_dist": "hom_multi_action",
+            "custom_model_config": {
+                **kwargs,
+                "pisa_path": os.path.abspath(kwargs["pisa_path"]) if kwargs["pisa_path"] is not None else kwargs["pisa_path"],
+                "wandb_grouping": f"{kwargs['scenario']}+{mode}",
+            },
+        },
+        "env_config": {
+            "device": "cpu",
+            "num_envs": kwargs["num_envs"],
+            "scenario_name": kwargs["scenario"],
+            "continuous_actions": False,
+            "max_steps": kwargs["max_steps"],
+            "share_reward": True,
+            # Scenario specific variables
+            "scenario_config": {
+                "n_agents": SCENARIO_CONFIG[kwargs["scenario"]]["num_agents"] if kwargs["scaling_agents"] is None else kwargs["scaling_agents"],
+            },
+        },
+        "evaluation_interval": kwargs["eval_interval"],
+        "evaluation_duration": 1,
+        "evaluation_num_workers": 1,
+        "evaluation_parallel_to_training": True,
+        "evaluation_config": {
+            "num_envs_per_worker": 1,
+            "env_config": {
+                "num_envs": 1,
+            },
+            "callbacks": MultiCallbacks(callbacks),
+        },
+    }
+
+    if not kwargs["no_hparams"]:
+        hparams = {
             "kl_coeff": 0.01,
             "kl_target": 0.01,
             "lambda": 0.9,
             "clip_param": 0.2,
             "vf_loss_coeff": 1,
             "vf_clip_param": float("inf"),
-            "entropy_coeff": 0.01,
-            "train_batch_size": train_batch_size,
-            # Should remain close to max steps to avoid bias
-            "rollout_fragment_length": rollout_fragment_length,
-            "sgd_minibatch_size": sgd_minibatch_size,
-            "num_sgd_iter": 45,
-            "num_gpus": num_gpus,
-            "num_workers": num_workers,
-            # "num_gpus_per_worker": num_gpus_per_worker,
-            # "num_cpus_per_worker": num_cpus_per_worker,
-            "num_envs_per_worker": num_envs_per_worker,
+            "entropy_coeff": 0,
+            "num_sgd_iter": 40,
             "lr": 5e-5,
             "gamma": 0.99,
-            "use_gae": True,
-            "use_critic": True,
-            "batch_mode": "complete_episodes",
-            "model": {
-                "custom_model": "policy_net",
-                "custom_action_dist": "hom_multi_action",
-                "custom_model_config": {
-                    "scenario_name": scenario_name,
-                    "encoder": encoder,
-                    "encoding_dim": encoding_dim,
-                    "encoder_file": os.path.abspath(encoder_file) if encoder_file is not None else encoder_file,
-                    "encoder_loss": encoder_loss,
-                    "use_proj": use_proj,
-                    "no_stand": no_stand,
-                    "cwd": os.getcwd(),
-                    "core_hidden_dim": 256,
-                    "head_hidden_dim": 32,
-                    "wandb_grouping": wandb_name,
-                },
-            },
-            "env_config": {
-                "device": "cpu",
-                "num_envs": num_envs_per_worker,
-                "scenario_name": scenario_name,
-                "continuous_actions": True,
-                "max_steps": max_steps,
-                "share_reward": True,
-                # Scenario specific variables
-                "scenario_config": {
-                    "n_agents": SCENARIO_CONFIG[scenario_name]["num_agents"],
-                },
-            },
-            "evaluation_interval": 10,  # TODO: Change to 10
-            "evaluation_duration": 1,
-            "evaluation_num_workers": 1,
-            "evaluation_parallel_to_training": True,  # Will this do the trick?
-            "evaluation_config": {
-                "num_envs_per_worker": 1,
-                "env_config": {
-                    "num_envs": 1,
-                },
-                "callbacks": MultiCallbacks(callbacks),  # Removed RenderingCallbacks
-            },
-            "callbacks": EvaluationCallbacks,
-        },
+        }
+        config = {
+            **config,
+            **hparams,
+        }
+
+    print(config)
+
+    # Train policy!
+    ray.tune.run(
+        MultiPPOTrainer,
+        local_dir=local_dir,
+        name=f"PPO_{time.strftime('%Y%m%d-%H%M%S')}",
+        stop={"training_iteration": kwargs["training_iterations"]},
+        checkpoint_freq=1,
+        keep_checkpoints_num=2,
+        checkpoint_at_end=True,
+        checkpoint_score_attr="episode_reward_mean",
+        callbacks=[
+            WandbLoggerCallback(
+                project=Config.WANDB_PROJECT,
+                name=f"{kwargs['scenario']}+{mode}+{kwargs['seed']}",
+                entity=Config.WANDB_ENTITY,
+                api_key="",
+            )
+        ],
+        config=config,
     )
     wandb.finish()
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Train policy with SAE')
 
+    # Modes
+    parser.add_argument('--task_agnostic', action='store_true', default=False, help='Task-agnostic pre-trained PISA experiment')
+    parser.add_argument('--task_specific', action='store_true', default=False, help='Reused pre-trained PISA experiment')
+    parser.add_argument('--train_specific', action='store_true', default=False, help='Train PISA with policy losses experiment')
+    parser.add_argument('--no_comms', action='store_true', default=False, help='No communications experiment')
+
     # Required
-    parser.add_argument('-c', '--scenario', default=None, help='VMAS scenario')
-    parser.add_argument('--model', default='ippo', help='Model: ippo/cppo/hetippo/joippo')
-
-    # Joint observations with encoder
-    parser.add_argument('--encoder', default=None, help='Encoder type: mlp/sae. Do not use this option for None')
-    parser.add_argument('--encoding_dim', default=None, type=int, help='Encoding dimension')
-    parser.add_argument('--encoder_loss', default=None, help='Train encoder loss: policy/recon leave None for frozen')
-    parser.add_argument('--encoder_file', default=None, help='File with encoder weights')
-
-    # Misc.
-    parser.add_argument('--use_proj', action="store_true", default=False, help='project observations into higher space')
-    parser.add_argument('--no_stand', action="store_true", default=False, help='do not standardise observations')
-    parser.add_argument('--no_render_eval_callbacks', action="store_true", default=False, help='disable render and eval callbacks for HPC')
+    parser.add_argument('--scenario', type=str, default=None, help='MeltingPot scenario')
+    parser.add_argument('--pisa_dim', type=int, default=None, help='PISA latent state dimensionality') # FIXME: Is this required? Can't we infer it?
+    parser.add_argument('--pisa_path', type=str, default=None, help='Path to PISA autoencoder state dict')
+    parser.add_argument('--seed', type=int, default=None)
 
     # Optional
-    parser.add_argument('--render', action="store_true", default=False, help='Render environment')
+    parser.add_argument('--no_hparams', action='store_true', default=False, help='Do not use tuned hyperparameters')
+    parser.add_argument('--scaling_agents', default=None, type=int, help='Use a different number of agents to the default for scaling')
+    parser.add_argument('--policy_width', default=256, type=int, help='Policy network width')
+    parser.add_argument('--excalibur', action='store_true', default=False, help='Disable callbacks for compatibility on excalibur/HPC')
+    parser.add_argument('--merlin', action='store_true', default=False)
+    parser.add_argument('--home', action='store_true', default=False)
+    parser.add_argument('--safe', action='store_true', default=False)
     parser.add_argument('--train_batch_size', default=60000, type=int, help='train batch size')
     parser.add_argument('--sgd_minibatch_size', default=4096, type=int, help='sgd minibatch size')
-    parser.add_argument('--training_iterations', default=5000, type=int, help='number of training iterations')
-    parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--wandb_name', default="rllib_training", help='wandb run name')
-
-
+    parser.add_argument('--training_iterations', default=500, type=int, help='number of training iterations')
+    parser.add_argument('--rollout_fragment_length', default=125, type=int, help='Rollout fragment length')
+    parser.add_argument('--eval_interval', default=10, type=int, help='Evaluation interval')
     parser.add_argument('--num_envs', default=32, type=int)
     parser.add_argument('--num_workers', default=5, type=int)
     parser.add_argument('--num_cpus_per_worker', default=1, type=int)
     parser.add_argument('-d', '--device', default='cuda')
+
     args = parser.parse_args()
+
+    # Check valid argument configuration
+    assert args.task_agnostic or args.task_specific or args.train_specific or args.no_comms, "No experiment mode specified"
+    assert args.scenario is not None, "--scenario not specified"
+    assert args.pisa_dim is not None, "--pisa_dim not specified"
+    assert args.seed is not None, "--seed not specified"
+    if args.task_agnostic or args.task_specific:
+        assert args.pisa_path, "--pisa_path not specified"
 
     # Set global configuration
     Config.device = args.device
 
-    policy(
-        scenario_name=args.scenario,
-        model=args.model,
-        encoder=args.encoder,
-        encoding_dim=args.encoding_dim,
-        encoder_file=args.encoder_file,
-        encoder_loss=args.encoder_loss,
-        use_proj=args.use_proj,
-        no_stand=args.no_stand,
-        train_batch_size=args.train_batch_size,
-        sgd_minibatch_size=args.sgd_minibatch_size,
-        max_steps=SCENARIO_CONFIG[args.scenario]["max_steps"],
-        training_iterations=args.training_iterations,
-        num_envs=args.num_envs,
-        num_workers=args.num_workers,
-        num_cpus_per_worker=args.num_cpus_per_worker,
-        render_env=args.render,
-        wandb_name=args.wandb_name,
-        no_render_eval_callbacks=args.no_render_eval_callbacks,
-        seed=args.seed,
-    )
+    policy(max_steps=SCENARIO_CONFIG[args.scenario]["max_steps"], **vars(args))

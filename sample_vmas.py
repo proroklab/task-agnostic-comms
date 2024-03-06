@@ -60,6 +60,13 @@ def sample(
         n_agents=num_agents,
     )
 
+    from torchvision.utils import save_image
+    scrn = env.render(mode="rgb_array")
+    scrn = torch.tensor(scrn.copy()).float() / 255.0
+    save_image(scrn.permute(2, 0, 1), f"{scenario_name}.png")
+    exit()
+
+
     obs_size = env.observation_space[0].shape[0]
     if not continuous:
         num_actions = env.action_space[0].n - 1
@@ -94,7 +101,6 @@ def sample(
                 prev_act[i] = act
 
             obs, _, dones, _ = env.step(actions)
-
             agent_observations[s] = torch.stack(obs)
 
             # Reset environments that are done
@@ -142,7 +148,7 @@ if __name__ == "__main__":
     parser.add_argument('--continuous', action='store_true', default=False, help='use continuous actions')
 
     parser.add_argument('--steps', default=200, type=int, help='number of sampling steps')
-    parser.add_argument('--num_envs', default=32, type=int, help='vectorized environments to sample from')
+    parser.add_argument('--num_envs', default=128, type=int, help='vectorized environments to sample from')
     parser.add_argument('--render', action='store_true', default=False, help='render scenario while sampling')
     parser.add_argument('-d', '--device', default='cuda')
     args = parser.parse_args()

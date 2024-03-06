@@ -1,0 +1,3 @@
+[submodule "meltingpot-marlcomms"]
+	path = meltingpot-marlcomms
+	url = git@github.com:DJayalath/meltingpot-marlcomms.git

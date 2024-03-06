@@ -22,9 +22,9 @@ if typing.TYPE_CHECKING:
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
         self.n_agents = kwargs.get("n_agents", 4)
-        self.n_targets = kwargs.get("n_targets", 6)
+        self.n_targets = kwargs.get("n_targets", 1)
         self._min_dist_between_entities = kwargs.get("min_dist_between_entities", 0.2)
-        self._lidar_range = kwargs.get("lidar_range", 0.2)
+        self._lidar_range = kwargs.get("lidar_range", 0.35)
         self._covering_range = kwargs.get("covering_range", 0.25)
         self._agents_per_target = kwargs.get("agents_per_target", 2)
         self.targets_respawn = kwargs.get("targets_respawn", True)
@@ -40,7 +40,7 @@ class Scenario(BaseScenario):
         self.target_radius = self.agent_radius
 
         self.viewer_zoom = 1
-        self.target_color = Color.GREEN
+        self.target_color = Color.RED
 
         # Make world
         world = World(
@@ -81,7 +81,7 @@ class Scenario(BaseScenario):
                         n_rays=12,
                         max_range=self._lidar_range,
                         entity_filter=entity_filter_targets,
-                        render_color=Color.GREEN,
+                        render_color=Color.BLUE,
                     ),
                 ],
             )
@@ -125,12 +125,13 @@ class Scenario(BaseScenario):
         for target in self._targets[self.n_targets :]:
             target.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
 
+
     def reward(self, agent: Agent):
         is_first = agent == self.world.agents[0]
         is_last = agent == self.world.agents[-1]
-        agent_index = self.world.agents.index(agent)
 
         if is_first:
+
             self.time_rew = torch.full(
                 (self.world.batch_dim,), self.time_penalty, device=self.world.device
             )
@@ -205,19 +206,22 @@ class Scenario(BaseScenario):
         ).uniform_(-1000 * self.world.x_semidim, -10 * self.world.x_semidim)
 
     def agent_reward(self, agent):
-        agent_index = self.world.agents.index(agent)
+        if "target" not in agent.name:
+            agent_index = self.world.agents.index(agent)
 
-        agent.covering_reward[:] = 0
-        targets_covered_by_agent = (
-            self.agents_targets_dists[:, agent_index] < self._covering_range
-        )
-        num_covered_targets_covered_by_agent = (
-            targets_covered_by_agent * self.covered_targets
-        ).sum(dim=-1)
-        agent.covering_reward += (
-            num_covered_targets_covered_by_agent * self.covering_rew_coeff
-        )
-        return agent.covering_reward
+            agent.covering_reward[:] = 0
+            targets_covered_by_agent = (
+                self.agents_targets_dists[:, agent_index] < self._covering_range
+            )
+            num_covered_targets_covered_by_agent = (
+                targets_covered_by_agent * self.covered_targets
+            ).sum(dim=-1)
+            agent.covering_reward += (
+                num_covered_targets_covered_by_agent * self.covering_rew_coeff
+            )
+            return agent.covering_reward
+        else:
+            return 0
 
     def observation(self, agent: Agent):
         lidar_1_measures = agent.sensors[0].measure()
@@ -226,7 +230,7 @@ class Scenario(BaseScenario):
             [
                 agent.state.pos,
                 agent.state.vel,
-                agent.state.pos,
+                torch.zeros_like(agent.state.pos),
                 lidar_1_measures,
                 # lidar_2_measures,
             ],
