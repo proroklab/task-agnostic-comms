@@ -1,5 +1,7 @@
 # Generalising Multi-Agent Cooperation through Task-Agnostic Communication
 
+This is the Python code for reproducing the experiments in the corresponding [paper](https://arxiv.org/abs/2403.06750).
+
 ## Setup
 
 Please make sure you have:
